@@ -22,10 +22,10 @@
 
     "types": ["vite/client"],
 
-    "baseUrl": "./",
+    "baseUrl": ".",
     "paths": {
-      "@/components/*": ["@/components/*"],
-      "@/*": ["./@/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/*": ["./src/*"],
     }
   },
   // "include": ["src", "@/components", "@/lib/utils"]
