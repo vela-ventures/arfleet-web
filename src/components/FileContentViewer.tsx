@@ -1,18 +1,13 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-interface StorageAssignment {
-  id: string;
-  files: File[];
-  status: 'processing' | 'uploading' | 'completed' | 'error';
-}
+import { StorageAssignment, FileMetadata } from '../types';
 
 interface FileContentViewerProps {
   assignment: StorageAssignment | null;
 }
 
 export default function FileContentViewer({ assignment }: FileContentViewerProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFile, setSelectedFile] = useState<FileMetadata | null>(null);
 
   if (!assignment) {
     return null;
@@ -45,8 +40,15 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
               <p className="text-sm text-muted-foreground">
                 Size: {selectedFile.size} bytes
               </p>
-              {/* Add file content preview here when implemented */}
-              <p className="mt-2">File content preview not yet implemented</p>
+              <p className="text-sm text-muted-foreground">
+                Path: {selectedFile.path}
+              </p>
+              <p className="mt-2">Chunk Hashes:</p>
+              <ul className="text-xs mt-1">
+                {selectedFile.chunkHashes.map((hash, index) => (
+                  <li key={index}>{hash.slice(0, 16)}...</li>
+                ))}
+              </ul>
             </div>
           ) : (
             <p className="mt-2">Select a file to view its content</p>

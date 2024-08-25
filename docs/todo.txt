@@ -1,0 +1,1 @@
+[] make sure the upload continues even if MyArfleet goes out from view

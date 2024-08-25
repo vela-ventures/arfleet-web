@@ -1,12 +1,7 @@
 import React from 'react';
-
+import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
-
-interface StorageAssignment {
-  id: string;
-  files: File[];
-  status: 'processing' | 'uploading' | 'completed' | 'error';
-}
+import { StorageAssignment } from '../types';
 
 interface StorageAssignmentListProps {
   assignments: StorageAssignment[];
@@ -32,8 +27,9 @@ export default function StorageAssignmentList({
             )}
             onClick={() => onSelectAssignment(assignment)}
           >
-            <p>Assignment {assignment.id}</p>
+            <p>Assignment {assignment.id.slice(0, 8)}...</p>
             <p className="text-sm text-muted-foreground">{assignment.status}</p>
+            <Progress value={assignment.progress} className="mt-2" />
           </li>
         ))}
       </ul>
