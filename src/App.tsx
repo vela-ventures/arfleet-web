@@ -164,14 +164,10 @@ function Header({ theme }) {
         </form>
       </div>
 
-      {arConnected ? (
-        <Button variant="outline" size="sm">Connected</Button>
-      ) : (
-        <ConnectButton
-          accent={buttonStyle.accent}
-          className={buttonStyle.className}
-        />
-      )}
+      <ConnectButton
+        accent={buttonStyle.accent}
+        className={`${buttonStyle.className} h-9`}
+      />
 
       <ThemeToggle />
 
@@ -197,6 +193,7 @@ function Header({ theme }) {
 
 function AppContent({ setActiveLink, activeLink, theme }) {
   const location = useLocation()
+  const { arConnected } = useArFleet();
 
   useEffect(() => {
     setActiveLink(location.pathname)
@@ -205,14 +202,39 @@ function AppContent({ setActiveLink, activeLink, theme }) {
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       <Sidebar activeLink={activeLink} />
-      <div className="flex flex-col">
+      <div className="flex flex-col h-screen overflow-hidden">
         <Header theme={theme} />
 
-        <Routes>
-          {links.map((link) => (
-            <Route key={link.href} path={link.href} element={link.component} />
-          ))}
-        </Routes>
+        <div className="flex-1 overflow-auto">
+          {arConnected ? (
+            <Routes>
+              {links.map((link) => (
+                <Route key={link.href} path={link.href} element={link.component} />
+              ))}
+            </Routes>
+          ) : (
+            <div className="flex justify-center items-center h-full bg-gray-100 dark:bg-gray-800">
+              <Card className="w-[350px] shadow-lg">
+                <CardHeader>
+                  <div className="flex justify-center mb-4">
+                    <img 
+                      src="/arfleet-logo-square.png" 
+                      alt="ArFleet Logo" 
+                      className="w-24 h-24 md:w-32 md:h-32"
+                    />
+                  </div>
+                  <CardTitle className="text-2xl font-bold text-center">Welcome to ArFleet</CardTitle>
+                  <CardDescription className="text-center">Connect your ArWeave wallet to get started</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center">
+                  <p className="mb-4 text-sm text-gray-600 dark:text-gray-300 text-center">
+                  </p>
+                  <ConnectButton className="w-full" />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

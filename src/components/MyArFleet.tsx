@@ -53,12 +53,12 @@ export default function MyArFleet() {
   function dragAndDropOverlay(overlayMode: boolean) {
     return (
       <div className={cn(
-        "absolute inset-0 z-50 flex items-center justify-center p-8 h-full w-full",
+        "absolute inset-0 z-50 flex items-center justify-center p-8 h-[calc(100vh-63px)] w-full",
         overlayMode ? "top-0 bg-background/80 border-2 border-dashed border-primary" : "top-0 border-2 border-transparent"
       )}>
         <div className={cn(
           "flex flex-col border-2 rounded-lg p-[15%]",
-          overlayMode ? "border-5 border-primary" : "border-dashed border-gray-300"
+          overlayMode ? "border-5 border-primary" : "border-dashed border-gray-200"
         )}>
             <div className={cn("flex flex-col items-center justify-center", overlayMode ? "" : "opacity-80")}>
                 <CloudUpload className="h-16 w-16 text-primary" />
@@ -91,7 +91,7 @@ export default function MyArFleet() {
   }
 
   return (
-    <div {...getRootProps()} className="flex flex-col h-screen relative">
+    <div {...getRootProps()} className="flex flex-col relative">
       <input {...getInputProps()} />
       
       <h1 className="text-2xl font-bold p-4">My ArFleet</h1>
