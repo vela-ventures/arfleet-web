@@ -54,7 +54,7 @@ export async function arfleetPrivateHash(): Promise<Uint8Array> {
 
 export interface DeepHashPointer {
     value: Uint8Array;
-    role: 'file';
+    role: string;
     dataLength: number;
 }
 export function isDeepHashPointer(data: any): data is DeepHashPointer {
@@ -67,8 +67,9 @@ export interface DataItem {
     anchor: Uint8Array;
     tags: [string, string][];
     dataHash: DeepHashPointer;
-    prepareToSign(): DeepHashChunk;
+    prepareToSign(): Promise<any>;
     extractHash(): Promise<DeepHashPointer>;
+    exportSigned(signature: Uint8Array): Promise<any>;
 }
 
 export async function createDataItemWithDataHash(
@@ -85,8 +86,8 @@ export async function createDataItemWithDataHash(
         anchor: crypto.getRandomValues(new Uint8Array(32)),
         tags,
         dataHash,
-        prepareToSign() {
-            return [
+        async prepareToSign() {
+            const signArray = [
                 stringToBuffer("dataitem"),
                 stringToBuffer("1"),
                 this.owner,
@@ -95,14 +96,28 @@ export async function createDataItemWithDataHash(
                 this.tags.map(([key, value]) => [stringToBuffer(key), stringToBuffer(value)]),
                 this.dataHash
             ];
+
+            const tag = concatBuffers([
+              stringToBuffer("list"),
+              stringToBuffer(signArray.length.toString())
+            ]);
+        
+            return await deepHashChunks(
+              signArray,
+              await sha384(tag),
+              true
+            );
         },
         async extractHash() {
             const pointer: DeepHashPointer = {
-                value: await deepHash(this.prepareToSign()),
-                role: 'file',
-                dataLength: this.dataHash.value.length
+                value: await deepHash(await this.prepareToSign()),
+                role: 'file-dataitem',
+                dataLength: -1
             };
             return pointer;
+        },
+        async exportSigned(signature: Uint8Array) {
+          //
         }
     };
 
@@ -161,7 +176,8 @@ export function stringToBuffer(string: string): Uint8Array {
   
 async function deepHashChunks(
   chunks: DeepHashChunks,
-  acc: Uint8Array
+  acc: Uint8Array,
+  skipHighestLevel: boolean = false
 ): Promise<Uint8Array> {
   if (chunks.length < 1) {
     return acc;
@@ -171,8 +187,14 @@ async function deepHashChunks(
     acc,
     await deepHash(chunks[0])
   ]);
+
+  if (chunks.length === 1 && skipHighestLevel) {
+    // Skip the final SHA-384 hashing for the highest level
+    return hashPair;
+  }
+
   const newAcc = await sha384(hashPair);
-  return await deepHashChunks(chunks.slice(1), newAcc);
+  return await deepHashChunks(chunks.slice(1), newAcc, skipHighestLevel);
 }
 
 export function concatBuffers(

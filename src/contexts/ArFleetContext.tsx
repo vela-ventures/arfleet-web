@@ -329,16 +329,24 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // create data item
       if (!address) throw new Error('Address not found');
       const dataItem = await createDataItemWithDataHash(pointer, address, new Uint8Array(), []);
+      const dataItemPrepareToSign = await dataItem?.prepareToSign();
+
+      // sign data item
+      const dataItemSignature = await wallet.signMessage(dataItemPrepareToSign, {
+        hashAlgorithm: 'SHA-384',
+      });
 
       updatedFiles.push({
         ...file,
         chunkHashes,
         rollingSha384: bufferToHex(fileRollingSha384),
         dataItem,
+        dataItemPrepareToSign,
+        dataItemSignature,
       });
     }
 
-    const assignmentHash = await sha256(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
+    const assignmentHash = await sha256hex(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
     const placements = PROVIDERS.map(provider => ({
       id: `${assignmentHash}-${provider}`,
       assignmentId: assignmentHash,
@@ -354,12 +362,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     placementQueueRef.current.push(...placements);
 
     console.log('Assignment processed:', assignmentHash);
-    updatedFiles.forEach(file => {
+    updatedFiles.forEach(async (file) => {
       console.log(`File: ${file.name}`);
       console.log(`Size: ${file.size}`);
       console.log(`Path: ${file.path}`);
       console.log(`Chunk hashes:`, file.chunkHashes);
       console.log(`Rolling SHA-384:`, file.rollingSha384);
+      console.log(`Data item:`, file.dataItem);
+      console.log(`Prepare to sign:`, file.dataItemPrepareToSign);
+      console.log(`Signature:`, file.dataItemSignature);
       console.log('---');
     });
   };
@@ -374,6 +385,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         chunkHashes: [],
         rollingSha384: '',
         dataItem: null,
+        dataItemPrepareToSign: null,
       })),
       rawFiles: acceptedFiles,
       status: 'created',
