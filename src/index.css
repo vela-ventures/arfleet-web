@@ -1,5 +1,16 @@
 @import "globals.css";
 
+
+.dark .logo-link img {
+  filter: grayscale(1) invert(1);
+}
+.logo-link span {
+  color: rgba(51, 51, 34, 0.68);
+}
+.dark .logo-link span {
+  color: #ccd;
+}
+
 /* :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

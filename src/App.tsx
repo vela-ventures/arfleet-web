@@ -223,8 +223,9 @@ function Sidebar({ activeLink }) {
     <div className="hidden border-r bg-muted/40 md:block">
       <div className="flex h-full max-h-screen flex-col gap-2">
         <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-          <RouterLink to="/" className="flex items-center gap-2 font-semibold">
-            <img src="/arfleet-logo.png" className="h-10" alt="ArFleet Logo" />
+          <RouterLink to="/" className="flex items-center gap-2 font-semibold logo-link">
+            <img src="/arfleet-logo-square.png" className="h-6" alt="ArFleet Logo" />
+            <span className="text-2xl font-extralight bg-clip-text text-transparent">ArFleet</span>
           </RouterLink>
         </div>
         <div className="flex-1">
