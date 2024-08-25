@@ -1,8 +1,5 @@
 [] progress not being updated until i click the assignment
 [] auto select the assignment that i just dropped, or the first one at least
-[] PRESERVE CONTEXT between switching components
-
-[] make sure the upload continues even if MyArfleet goes out from view
 
 [] search not working
 [] navigation

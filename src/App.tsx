@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge"
 import useLocalStorageState from 'use-local-storage-state'
 import { Moon, Sun } from "lucide-react"
 import {useDropzone} from 'react-dropzone';
+import { ArFleetProvider } from './contexts/ArFleetContext';
 
 // Components for other routes (placeholder)
 const Dashboard = () => <div>Dashboard</div>
@@ -321,9 +322,11 @@ function ThemeToggle() {
 
   return (
     <WalletWrapper>
-      <Router>
-        <AppContent setActiveLink={setActiveLink} activeLink={activeLink} theme={theme} />
-      </Router>
+      <ArFleetProvider>
+        <Router>
+          <AppContent setActiveLink={setActiveLink} activeLink={activeLink} theme={theme} />
+        </Router>
+      </ArFleetProvider>
     </WalletWrapper>
   )
 }
