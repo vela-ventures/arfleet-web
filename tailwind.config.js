@@ -52,6 +52,10 @@ module.exports = {
           foreground: "hsl(var(--card-foreground))",
         },
       },
+      fontFamily: {
+        DM: ["DM Sans", "sans-serif"],
+        RobotoMono: ["Roboto Mono", "sans-serif"],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

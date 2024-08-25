@@ -8,6 +8,7 @@ import MyArFleet from './components/MyArFleet'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
+import lineData from './store/lines'
 import {
   CircleUser,
   LineChart,
@@ -21,6 +22,7 @@ import useLocalStorageState from 'use-local-storage-state'
 import { Moon, Sun } from "lucide-react"
 import {useDropzone} from 'react-dropzone';
 import { ArFleetProvider, useArFleet } from './contexts/ArFleetContext';
+import WallOfLines from './components/WallOfLines'
 
 // Components for other routes (placeholder)
 const Dashboard = () => <div>Dashboard</div>
@@ -213,12 +215,14 @@ function AppContent({ setActiveLink, activeLink, theme }) {
               ))}
             </Routes>
           ) : (
-            <div className="flex justify-center items-center h-full bg-gray-100 dark:bg-gray-800">
-              <Card className="w-[350px] shadow-lg">
+            <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800 font-RobotoMono relative">
+
+              <Card className="w-[350px] shadow-lg shadow-gray-400 dark:shadow-gray-500 dark:shadow-sm z-10">
                 <CardHeader>
                   <div className="flex justify-center mb-4">
                     <img 
                       src="/arfleet-logo-square.png" 
+                      style={{ filter: theme === 'dark' ? "invert(1) grayscale(1) opacity(0.5)" : "" }}
                       alt="ArFleet Logo" 
                       className="w-24 h-24 md:w-32 md:h-32"
                     />
@@ -232,6 +236,16 @@ function AppContent({ setActiveLink, activeLink, theme }) {
                   <ConnectButton className="w-full" />
                 </CardContent>
               </Card>
+
+              <WallOfLines
+                className={"absolute inset-0 w-full h-full z-0 " + (theme === 'dark' ? "opacity-30" : "")}
+                lines={lineData}
+                minDelay={50}
+                maxDelay={600}
+                colors={theme === 'dark' ? ["#FF9797", "#8886FF", "#4BC24B"] : ["#FF9797", "#8886FF", "#4BC24B"]}
+                primaryColor={theme === 'dark' ? "#557799" : "#C8CCD8"}
+              />
+
             </div>
           )}
         </div>
