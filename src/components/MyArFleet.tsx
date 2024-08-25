@@ -1,20 +1,32 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { CloudUpload, FolderUp } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import StorageAssignmentList from './StorageAssignmentList';
 import AssignmentDetails from './AssignmentDetails';
 import FileContentViewer from './FileContentViewer';
+import { sha256 } from 'js-sha256';
+
+interface FileMetadata {
+  name: string;
+  size: number;
+  path: string;
+  chunkHashes: string[];
+}
 
 interface StorageAssignment {
   id: string;
-  files: File[];
-  status: 'processing' | 'uploading' | 'completed' | 'error';
+  files: FileMetadata[];
+  rawFiles: File[];
+  status: 'created' | 'chunking' | 'ready' | 'uploading' | 'completed' | 'error';
 }
+
+const CHUNK_SIZE = 4096; // 4KB chunks
 
 export default function MyArFleet() {
   const [assignments, setAssignments] = useState<StorageAssignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<StorageAssignment | null>(null);
+  const [assignmentQueue, setAssignmentQueue] = useState<string[]>([]);
 
   function dragAndDropOverlay(overlayMode: boolean) {
     return (
@@ -53,17 +65,86 @@ export default function MyArFleet() {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newAssignment: StorageAssignment = {
       id: Date.now().toString(),
-      files: acceptedFiles,
-      status: 'processing',
+      files: acceptedFiles.map(file => ({
+        name: file.name,
+        size: file.size,
+        path: file.path || file.name,
+        chunkHashes: [],
+      })),
+      rawFiles: acceptedFiles,
+      status: 'created',
     };
     setAssignments(prev => [...prev, newAssignment]);
-    // TODO: Implement file chunking and assignment creation logic
+    setAssignmentQueue(prev => [...prev, newAssignment.id]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
     noClick: assignments.length > 0 // Disable click when assignments exist
   });
+
+  useEffect(() => {
+    const processNextAssignment = async () => {
+      if (assignmentQueue.length === 0) return;
+
+      const assignmentId = assignmentQueue[0];
+      const assignment = assignments.find(a => a.id === assignmentId);
+
+      if (assignment && assignment.status === 'created') {
+        await processAssignment(assignment);
+        setAssignmentQueue(prev => prev.slice(1));
+      }
+    };
+
+    processNextAssignment();
+  }, [assignmentQueue, assignments]);
+
+  const processAssignment = async (assignment: StorageAssignment) => {
+    setAssignments(prev => prev.map(a => 
+      a.id === assignment.id ? { ...a, status: 'chunking' } : a
+    ));
+
+    const updatedFiles: FileMetadata[] = [];
+
+    for (let i = 0; i < assignment.files.length; i++) {
+      const file = assignment.files[i];
+      const rawFile = assignment.rawFiles[i];
+      const fileContent = await readFileAsArrayBuffer(rawFile);
+      const chunkHashes: string[] = [];
+
+      for (let j = 0; j < fileContent.byteLength; j += CHUNK_SIZE) {
+        const chunk = fileContent.slice(j, j + CHUNK_SIZE);
+        const chunkHash = sha256(new Uint8Array(chunk));
+        chunkHashes.push(chunkHash);
+      }
+
+      updatedFiles.push({
+        ...file,
+        chunkHashes,
+      });
+    }
+
+    setAssignments(prev => prev.map(a => 
+      a.id === assignment.id ? { ...a, files: updatedFiles, status: 'ready' } : a
+    ));
+
+    // Log the chunk hashes for each file
+    console.log('Assignment processed:', assignment.id);
+    updatedFiles.forEach(file => {
+      console.log(`File: ${file.name}`);
+      console.log(`Chunk hashes:`, file.chunkHashes);
+      console.log('---');
+    });
+  };
+
+  const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
   return (
     <div {...getRootProps()} className="flex flex-col h-screen relative">
