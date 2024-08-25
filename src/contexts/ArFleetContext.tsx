@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { StorageAssignment, FileMetadata, Placement } from '../types';
-import { sha256 } from 'js-sha256';
 import { Buffer } from 'buffer';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
@@ -252,7 +251,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const start = chunkIndex * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, rawFile.size);
         const chunk = await readFileChunk(rawFile, start, end);
-        const chunkHash = sha256(new Uint8Array(chunk));
+        const chunkHash = await sha256(chunk);
         chunkHashes.push(chunkHash);
       }
 
@@ -262,7 +261,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }
 
-    const assignmentHash = sha256(updatedFiles.map(f => f.chunkHashes.join('')).join(''));
+    const assignmentHash = await sha256(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
     const placements = PROVIDERS.map(provider => ({
       id: `${assignmentHash}-${provider}`,
       assignmentId: assignmentHash,
@@ -287,7 +286,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const newAssignment: StorageAssignment = {
       id: Date.now().toString(),
       files: acceptedFiles.map(file => ({
@@ -333,6 +332,12 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       reader.readAsArrayBuffer(file.slice(start, end));
     });
   };
+
+  async function sha256(data: ArrayBuffer): Promise<string> {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
 
   const value = {
     assignments,
