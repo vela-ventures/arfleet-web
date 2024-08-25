@@ -7,6 +7,18 @@ import AssignmentDetails from './AssignmentDetails';
 import FileContentViewer from './FileContentViewer';
 import { useArFleet } from '../contexts/ArFleetContext';
 
+async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Promise<File[]> {
+  const files: File[] = [];
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === 'file') {
+      files.push(await entry.getFile());
+    } else if (entry.kind === 'directory') {
+      files.push(...await getFilesFromDirectory(entry));
+    }
+  }
+  return files;
+}
+
 export default function MyArFleet() {
   const { assignments, selectedAssignment, setSelectedAssignment, onDrop } = useArFleet();
 
@@ -14,6 +26,29 @@ export default function MyArFleet() {
     onDrop,
     noClick: assignments.length > 0 // Disable click when assignments exist
   });
+
+  const handleFileSelect = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.onchange = (e: Event) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files) onDrop(Array.from(files));
+    };
+    input.click();
+  };
+
+  const handleDirSelect = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const files = await getFilesFromDirectory(dirHandle);
+      onDrop(files);
+    } catch (error) {
+      console.error("Error selecting directory:", error);
+    }
+  };
 
   function dragAndDropOverlay(overlayMode: boolean) {
     return (
@@ -29,16 +64,22 @@ export default function MyArFleet() {
                 <CloudUpload className="h-16 w-16 text-primary" />
                 <p className="mt-4 text-xl font-semibold">Drop files or folders here to upload</p>
                 <p className="text-sm text-gray-500">
-                    {overlayMode ? (<span>&nbsp;</span>) : "or click here"}
+                    {overlayMode ? (<span>&nbsp;</span>) : "or use the buttons below"}
                 </p>
 
                 {/* buttons: Upload File and Upload Folder */}
                 <div className={cn("flex flex-row justify-center space-x-4 mt-6", overlayMode ? "invisible" : "visible")}>
-                    <button className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out flex items-center">
+                    <button
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out flex items-center"
+                      onClick={handleFileSelect}
+                    >
                       <CloudUpload className="h-5 w-5 mr-2" />
-                      Upload File
+                      Upload Files
                     </button>
-                    <button className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out flex items-center">
+                    <button
+                      className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out flex items-center"
+                      onClick={handleDirSelect}
+                    >
                       <FolderUp className="h-5 w-5 mr-2" />
                       Upload Folder
                     </button>
