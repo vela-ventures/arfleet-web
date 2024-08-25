@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { CloudUpload } from 'lucide-react';
+import { CloudUpload, FolderUp } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import StorageAssignmentList from './StorageAssignmentList';
 import AssignmentDetails from './AssignmentDetails';
@@ -16,6 +16,40 @@ export default function MyArFleet() {
   const [assignments, setAssignments] = useState<StorageAssignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<StorageAssignment | null>(null);
 
+  function dragAndDropOverlay(overlayMode: boolean) {
+    return (
+      <div className={cn(
+        "absolute inset-0 z-50 flex items-center justify-center p-8 h-full w-full",
+        overlayMode ? "top-0 bg-background/80 border-2 border-dashed border-primary" : "top-0 border-2 border-transparent"
+      )}>
+        <div className={cn(
+          "flex flex-col border-2 rounded-lg p-[15%]",
+          overlayMode ? "border-5 border-primary" : "border-dashed border-gray-300"
+        )}>
+            <div className={cn("flex flex-col items-center justify-center", overlayMode ? "" : "opacity-80")}>
+                <CloudUpload className="h-16 w-16 text-primary" />
+                <p className="mt-4 text-xl font-semibold">Drop files or folders here to upload</p>
+                <p className="text-sm text-gray-500">
+                    {overlayMode ? (<span>&nbsp;</span>) : "or click here"}
+                </p>
+
+                {/* buttons: Upload File and Upload Folder */}
+                <div className={cn("flex flex-row justify-center space-x-4 mt-6", overlayMode ? "invisible" : "visible")}>
+                    <button className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out flex items-center">
+                      <CloudUpload className="h-5 w-5 mr-2" />
+                      Upload File
+                    </button>
+                    <button className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-semibold py-2 px-4 rounded-lg shadow-md transition duration-300 ease-in-out flex items-center">
+                      <FolderUp className="h-5 w-5 mr-2" />
+                      Upload Folder
+                    </button>
+                </div>
+            </div>
+        </div>
+      </div>
+    );
+  }
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newAssignment: StorageAssignment = {
       id: Date.now().toString(),
@@ -26,29 +60,24 @@ export default function MyArFleet() {
     // TODO: Implement file chunking and assignment creation logic
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+    onDrop,
+    noClick: assignments.length > 0 // Disable click when assignments exist
+  });
 
   return (
-    <main className="flex flex-col h-screen">
+    <div {...getRootProps()} className="flex flex-col h-screen relative">
+      <input {...getInputProps()} />
+      
       <h1 className="text-2xl font-bold p-4">My ArFleet</h1>
-      {assignments.length === 0 ? (
-        <div
-          {...getRootProps()}
-          className={cn(
-            "flex-1 flex items-center justify-center border-2 border-dashed rounded-xl m-4",
-            isDragActive ? "border-primary bg-primary/10" : "border-muted-foreground/25"
-          )}
-        >
-          <input {...getInputProps()} />
-          <div className="text-center">
-            <CloudUpload className="mx-auto h-12 w-12 text-muted-foreground" />
-            <p className="mt-2">Drag and drop files here, or click to select files</p>
-          </div>
-        </div>
+
+      {assignments.length === 0 && !isDragActive ? (
+        dragAndDropOverlay(false)
       ) : (
-        <div className="flex-1 flex">
-          <StorageAssignmentList
-            assignments={assignments}
+        assignments.length > 0 ? (
+          <div className="flex-1 flex">
+            <StorageAssignmentList
+              assignments={assignments}
             selectedAssignment={selectedAssignment}
             onSelectAssignment={setSelectedAssignment}
           />
@@ -57,7 +86,9 @@ export default function MyArFleet() {
             <FileContentViewer assignment={selectedAssignment} />
           </div>
         </div>
+        ) : null
       )}
-    </main>
+      {isDragActive && dragAndDropOverlay(true)}
+    </div>
   );
 }
