@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom'
 import { createDataItemSigner, DataItemSigner } from "@permaweb/aoconnect"
-import { Bell, CloudUpload, Home, Package, ShoppingCart, Users } from "lucide-react"
+import { Bell, CloudUpload, Home, Package, ShoppingCart, Users, Server } from "lucide-react"
 import { Link as RouterLink } from 'react-router-dom'
 import { ConnectButton } from "arweave-wallet-kit"
 import WalletWrapper from './components/WalletWrapper'
@@ -36,6 +36,7 @@ declare global {
 
 const links = [
   { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet /> },
+  { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Dashboard /> },
   { name: "Dashboard", href: "/dashboard", icon: <Home className="h-4 w-4" />, component: <Dashboard /> },
   { name: "Orders", href: "/orders", icon: <ShoppingCart className="h-4 w-4" />, component: <Orders /> },
   { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
@@ -194,7 +195,7 @@ function Header({ theme }) {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search products..."
+                placeholder="Search assignments..."
                 className="w-full appearance-none bg-background pl-8 shadow-none md:w-2/3 lg:w-1/3"
               />
             </div>
