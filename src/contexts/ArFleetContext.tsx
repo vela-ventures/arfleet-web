@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { StorageAssignment, FileMetadata, Placement } from '../types';
 import { Buffer } from 'buffer';
+import { sha256, privateHash } from '../helpers';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -332,12 +333,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       reader.readAsArrayBuffer(file.slice(start, end));
     });
   };
-
-  async function sha256(data: ArrayBuffer): Promise<string> {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  }
 
   const value = {
     assignments,
