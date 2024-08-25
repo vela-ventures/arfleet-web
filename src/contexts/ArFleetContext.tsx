@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { StorageAssignment, FileMetadata, Placement } from '../types';
 import { Buffer } from 'buffer';
-import { sha256, privateHash } from '../helpers';
+import { sha256, privateHash, makeHasher, HashType, createDataItemWithDataHash, sha256hex, sha384hex, DeepHashPointer, bufferToHex } from '../helpers';
+import { createDataItemSigner } from "@permaweb/aoconnect";
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
+
+type DataItemSigner = ReturnType<typeof createDataItemSigner>;
 
 interface ArFleetContextType {
   assignments: StorageAssignment[];
@@ -12,6 +15,11 @@ interface ArFleetContextType {
   setSelectedAssignment: (assignment: StorageAssignment | null) => void;
   onDrop: (acceptedFiles: File[]) => void;
   processPlacementQueue: () => Promise<void>;
+  address: string | null;
+  wallet: any | null;
+  signer: DataItemSigner | null;
+  arConnected: boolean;
+  connectWallet: () => Promise<void>;
 }
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
@@ -35,6 +43,57 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const checkProviderReadyRef = useRef<(placement: Placement) => Promise<string>>();
   const transferChunksRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
   const verifyStorageRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<void>>();
+
+  const [arConnected, setArConnected] = useState(false);
+  const [wallet, setWallet] = useState<any | null>(null);
+  const [signer, setSigner] = useState<DataItemSigner | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+
+  const connectWallet = useCallback(async () => {
+    if (globalThis.arweaveWallet) {
+      const wallet_ = globalThis.arweaveWallet;
+      let signer_ = createDataItemSigner(wallet_);
+      setSigner(signer_);
+      setWallet(wallet_);
+
+      try {
+        const address_ = await wallet_.getActiveAddress();
+        setAddress(address_);
+        setArConnected(true);
+      } catch (e) {
+        console.error("Error connecting to wallet:", e);
+        setArConnected(false);
+      }
+    } else {
+      setArConnected(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    connectWallet();
+
+    globalThis.prevConnected = null;
+    const interval = setInterval(async () => {
+      const wallet_ = globalThis.arweaveWallet;
+      let curConnected = false;
+      if (wallet_) {
+        try {
+          const address_ = await wallet_.getActiveAddress();
+          curConnected = !!address_;
+        } catch (e) {
+          curConnected = false;
+        }
+      }
+
+      if (globalThis.prevConnected !== null && globalThis.prevConnected !== curConnected) {
+        location.reload();
+      } else {
+        globalThis.prevConnected = curConnected;
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [connectWallet]);
 
   const updatePlacementStatus = useCallback((placementId: string, status: Placement['status']) => {
     setAssignments(prev => prev.map(a => {
@@ -162,7 +221,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return 'verifying';
   };
 
-  const uploadChunk = async (placement: Placement, file: FileMetadata, chunk: ArrayBuffer, chunkIndex: number) => {
+  const uploadChunk = async (placement: Placement, file: FileMetadata, chunk: Uint8Array, chunkIndex: number) => {
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
       'X-Assignment-Id': placement.assignmentId,
@@ -246,19 +305,36 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const file = assignment.files[i];
       const rawFile = assignment.rawFiles[i];
       const chunkHashes: string[] = [];
+      const rollingHash = await makeHasher(HashType.SHA384);
 
       const totalChunks = Math.ceil(rawFile.size / CHUNK_SIZE);
       for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
         const start = chunkIndex * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, rawFile.size);
         const chunk = await readFileChunk(rawFile, start, end);
-        const chunkHash = await sha256(chunk);
+        const chunkHash = await sha256hex(chunk);
         chunkHashes.push(chunkHash);
+        
+        // Update rolling hash with the current chunk
+        await rollingHash.update(chunk);
       }
+
+      const fileRollingSha384 = await rollingHash.finalize();
+      const pointer: DeepHashPointer = {
+        value: fileRollingSha384,
+        role: 'file',
+        dataLength: rawFile.size,
+      };
+
+      // create data item
+      if (!address) throw new Error('Address not found');
+      const dataItem = await createDataItemWithDataHash(pointer, address, new Uint8Array(), []);
 
       updatedFiles.push({
         ...file,
         chunkHashes,
+        rollingSha384: bufferToHex(fileRollingSha384),
+        dataItem,
       });
     }
 
@@ -283,6 +359,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log(`Size: ${file.size}`);
       console.log(`Path: ${file.path}`);
       console.log(`Chunk hashes:`, file.chunkHashes);
+      console.log(`Rolling SHA-384:`, file.rollingSha384);
       console.log('---');
     });
   };
@@ -295,6 +372,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         size: file.size,
         path: file.name,
         chunkHashes: [],
+        rollingSha384: '',
+        dataItem: null,
       })),
       rawFiles: acceptedFiles,
       status: 'created',
@@ -325,10 +404,10 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     processPlacementQueue();
   }, [processPlacementQueue, assignments]);
 
-  const readFileChunk = (file: File, start: number, end: number): Promise<ArrayBuffer> => {
+  const readFileChunk = (file: File, start: number, end: number): Promise<Uint8Array> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
       reader.onerror = reject;
       reader.readAsArrayBuffer(file.slice(start, end));
     });
@@ -340,6 +419,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setSelectedAssignment,
     onDrop,
     processPlacementQueue,
+    address,
+    wallet,
+    signer,
+    arConnected,
+    connectWallet,
   };
 
   return <ArFleetContext.Provider value={value}>{children}</ArFleetContext.Provider>;

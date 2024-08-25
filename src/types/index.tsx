@@ -3,6 +3,7 @@ export interface FileMetadata {
     size: number;
     path: string;
     chunkHashes: string[];
+    rollingSha384: string;
   }
   
   export interface Placement {
