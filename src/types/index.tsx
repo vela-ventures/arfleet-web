@@ -12,6 +12,7 @@ export interface FileMetadata {
     provider: string;
     status: 'created' | 'transferring' | 'verifying' | 'completed' | 'error';
     progress: number;
+    rsaKeyPair: CryptoKeyPair;
   }
   
   export interface StorageAssignment {

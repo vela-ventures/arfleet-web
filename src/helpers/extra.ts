@@ -1,5 +1,3 @@
-import { b64UrlToBuffer, longTo8ByteArray } from './encodeUtils.js';
-
 export async function privateHash(data: Uint8Array, salt: Uint8Array | string): Promise<Uint8Array> {
     const saltBuffer = typeof salt === 'string' ? new TextEncoder().encode(salt) : salt;
     const dataWithSalt = new Uint8Array(saltBuffer.length + data.length);

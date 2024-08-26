@@ -9,6 +9,7 @@ import { b64UrlToBuffer } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
 import { experiment } from '../helpers/rsa';
+import { generateRSAKeyPair } from '../helpers/rsa';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -371,12 +372,16 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     const assignmentHash = await sha256hex(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
-    const placements = PROVIDERS.map(provider => ({
-      id: `${assignmentHash}-${provider}`,
-      assignmentId: assignmentHash,
-      provider,
-      status: 'created' as const,
-      progress: 0,
+    const placements = await Promise.all(PROVIDERS.map(async provider => {
+      const rsaKeyPair = await generateRSAKeyPair();
+      return {
+        id: `${assignmentHash}-${provider}`,
+        assignmentId: assignmentHash,
+        provider,
+        status: 'created' as const,
+        progress: 0,
+        rsaKeyPair,
+      };
     }));
 
     setAssignments(prev => prev.map(a => 
