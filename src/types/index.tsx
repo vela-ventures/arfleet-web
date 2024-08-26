@@ -8,6 +8,7 @@ export interface FileMetadata {
   
   export interface Placement {
     id: string;
+    assignment: StorageAssignment;
     assignmentId: string;
     provider: string;
     status: 'created' | 'transferring' | 'verifying' | 'completed' | 'error';

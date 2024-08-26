@@ -2,6 +2,8 @@ export function concatBuffers(
     buffers: Uint8Array[] | ArrayBuffer[]
 ): Uint8Array {
     let total_length = 0;
+
+    if (buffers.length === 0) return new Uint8Array([]);
   
     for (let i = 0; i < buffers.length; i++) {
       total_length += buffers[i].byteLength;
@@ -75,3 +77,12 @@ export function longTo8ByteArray(long: number): Uint8Array {
 
   return Uint8Array.from(byteArray);
 }
+
+export function readFileChunk(file: File, start: number, end: number): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file.slice(start, end));
+  });
+};
