@@ -15,10 +15,13 @@ pkcs8 = { version = "0.10", features = ["std"] }
 num-bigint-dig = "0.8"
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
+num-bigint = "0.4"
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["Window", "Crypto"]
+features = ["Window", "Crypto", "console"]
 
 [profile.dev]
 opt-level = 3

@@ -1,3 +1,41 @@
+import { AESEncryptedContainer } from "./aes";
+import { Sliceable, SliceParts } from "./slice";
+
+export const RSA_KEY_LENGTH = 1024;
+
+export class RSAContainer extends Sliceable {
+  rsaKeyPair: CryptoKeyPair;
+  inner: AESEncryptedContainer;
+  underlyingByteLength: number;
+
+  constructor(rsaKeyPair: CryptoKeyPair, inner: AESEncryptedContainer) {
+    super();
+    this.rsaKeyPair = rsaKeyPair;
+    this.inner = inner;
+    this.underlyingByteLength = -1;
+  }
+
+  async buildParts(): Promise<SliceParts> {
+    this.underlyingByteLength = await this.inner.getByteLength();
+
+    const parts: SliceParts = [];
+
+    const magicString = "arf::rsa";
+    parts.push([magicString.length, new TextEncoder().encode(magicString)]);
+    parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
+
+    return parts;
+  }
+
+  async getEncryptedByteLength(): Promise<number> {
+    // 
+  }
+
+  async encryptSlice(start: number, end: number): Promise<Uint8Array> {
+    
+  }
+}
+
 export async function generateRSAKeyPair() {
     const keyPair = await window.crypto.subtle.generateKey(
       {

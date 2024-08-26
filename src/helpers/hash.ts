@@ -31,82 +31,81 @@ export async function sha384hex(data: Uint8Array): Promise<string> {
 ///////////////////////
 
 
-// async function generateKeyPair(): Promise<CryptoKeyPair> {
-//     return await window.crypto.subtle.generateKey(
-//         {
-//             name: "RSA-OAEP",
-//             modulusLength: 2048,
-//             publicExponent: new Uint8Array([1, 0, 1]),
-//             hash: "SHA-256",
-//         },
-//         true,
-//         ["encrypt", "decrypt"]
-//     );
-// }
-
-// async function exportRawPrivateKey(key: CryptoKey): Promise<Uint8Array> {
-//     const exported = await window.crypto.subtle.exportKey("pkcs8", key);
-//     return new Uint8Array(exported);
-// }
-
-// async function exportRawPublicKey(key: CryptoKey): Promise<Uint8Array> {
-//     const exported = await window.crypto.subtle.exportKey("spki", key);
-//     return new Uint8Array(exported);
-// }
-
-// export async function run() {
-//     await init();
-
-//     console.log('init');
-
-//     const input = "test input";
-//     const keyPair = await generateKeyPair();
-//     const privateKeyRaw = await exportRawPrivateKey(keyPair.privateKey);
-//     const publicKeyRaw = await exportRawPublicKey(keyPair.publicKey);
-
-//     console.log('Private Key (raw):', bufferToHex(privateKeyRaw));
-//     console.log('Public Key (raw):', bufferToHex(publicKeyRaw));
-
-//     const encryptor = new RsaEncryptor(2048); // Assuming 2048 bits key size
-//     const maxChunkSize = encryptor.max_chunk_size();
-//     const buffer = new TextEncoder().encode(input);
-
-//     console.log('Original input:', input);
-//     console.log('Buffer:', buffer);
-//     console.log('Max chunk size:', maxChunkSize);
-
-//     if (buffer.length > maxChunkSize) {
-//         console.warn(`Input is larger than the maximum chunk size (${maxChunkSize} bytes). It will be truncated.`);
-//     }
-
-//     try {
-//         const chunk = buffer.slice(0, maxChunkSize);
-//         // Pad the chunk with leading zeros if necessary
-//         const paddedChunk = new Uint8Array(maxChunkSize);
-//         paddedChunk.set(chunk, maxChunkSize - chunk.length);
-        
-//         const encrypted = await encryptor.encrypt_chunk(paddedChunk, privateKeyRaw);
-//         console.log('Encrypted output:', bufferToHex(encrypted));
-
-//         const decrypted = await encryptor.decrypt_chunk(encrypted, publicKeyRaw);
-//         // Remove leading zeros from the decrypted result
-//         const trimmedDecrypted = decrypted.slice(decrypted.findIndex(byte => byte !== 0));
-//         const decryptedText = new TextDecoder().decode(trimmedDecrypted);
-//         console.log('Decrypted output:', decryptedText);
-
-//         if (decryptedText === input) {
-//             console.log('Encryption and decryption successful!');
-//         } else {
-//             console.error('Decrypted text does not match original input.');
-//         }
-//     } catch (err) {
-//         console.error('Encryption or decryption failed:', err);
-//     }
-// }
-
-export function run() {
-    console.log('run');
+async function generateRsaKeyPair(): Promise<{ publicKey: RsaPublicKey, privateKey: RsaPrivateKey }> {
+    const bits = 2048;
+    const privateKey = await RsaPrivateKey.new(bits);
+    const publicKey = await RsaPublicKey.from(privateKey);
+    return { publicKey, privateKey };
 }
+
+export async function run() {
+    await init();
+
+    console.log('init');
+
+    const input = "test input";
+    const bits = 2048;
+
+    try {
+        // Create a new RsaEncryptor instance
+        const encryptor = new RsaEncryptor(bits);
+
+        console.log('RSA Encryptor created');
+
+        const buffer = new TextEncoder().encode(input);
+
+        console.log('Original input:', input);
+        console.log('Buffer:', buffer);
+
+        // Encrypt the data
+        const encrypted = encryptor.encrypt(buffer);
+        console.log('Encrypted output:', bufferToHex(new Uint8Array(encrypted)));
+
+        // Decrypt the data
+        const decrypted = encryptor.decrypt(new Uint8Array(encrypted));
+        const decryptedText = new TextDecoder().decode(new Uint8Array(decrypted));
+        console.log('Decrypted output:', decryptedText);
+
+        if (decryptedText === input) {
+            console.log('Encryption and decryption successful!');
+        } else {
+            console.error('Decrypted text does not match original input.');
+        }
+    } catch (err) {
+        console.error('Operation failed:', err);
+    }
+}
+
+function jwkToPem(jwk: JsonWebKey, type: 'public' | 'private'): string {
+    if (type === 'public') {
+        const modulus = Buffer.from(jwk.n!, 'base64url');
+        const exponent = Buffer.from(jwk.e!, 'base64url');
+
+        const modulusHex = modulus.toString('hex');
+        const exponentHex = exponent.toString('hex');
+
+        const modulusLength = modulus.length * 8;
+        const modulusLengthHex = modulusLength.toString(16).padStart(4, '0');
+
+        const template = `30 81 ${modulusLengthHex} 02 81 ${modulusLengthHex} 00 ${modulusHex} 02 03 ${exponentHex}`;
+        const der = Buffer.from(template.replace(/\s+/g, ''), 'hex');
+
+        const pem = `-----BEGIN RSA PUBLIC KEY-----\n${der.toString('base64').match(/.{1,64}/g)!.join('\n')}\n-----END RSA PUBLIC KEY-----\n`;
+        return pem;
+    } else {
+        // For private key, we need all components
+        const components = ['n', 'e', 'd', 'p', 'q', 'dp', 'dq', 'qi'].map(k => Buffer.from(jwk[k as keyof JsonWebKey] as string, 'base64url'));
+        const [n, e, d, p, q, dp, dq, qi] = components;
+
+        const template = `30 82 04 a4 02 01 00 02 82 01 01 00 ${n.toString('hex')} 02 03 ${e.toString('hex')} 02 82 01 00 ${d.toString('hex')} 02 81 81 00 ${p.toString('hex')} 02 81 81 00 ${q.toString('hex')} 02 81 80 ${dp.toString('hex')} 02 81 80 ${dq.toString('hex')} 02 81 81 00 ${qi.toString('hex')}`;
+        const der = Buffer.from(template.replace(/\s+/g, ''), 'hex');
+
+        const pem = `-----BEGIN RSA PRIVATE KEY-----\n${der.toString('base64').match(/.{1,64}/g)!.join('\n')}\n-----END RSA PRIVATE KEY-----\n`;
+        return pem;
+    }
+}
+
+run();
 
 // <script>
 // (async () => {
@@ -116,11 +115,11 @@ export function run() {
 //       {
 //         name: "RSASSA-PKCS1-v1_5",
 //         modulusLength: 2048,
-//         publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-//         hash: { name: "SHA-256" }, // This is required by the API but won't be used for hashing
+//         publicExponent: new Uint8Array([1, 0, 1]),
+//         hash: "SHA-256",
 //       },
 //       true,
-//       ["sign", "verify"]
+//       ["encrypt", "decrypt"]
 //     );
 
 //     const data = new TextEncoder().encode("Hello World"); // Ensure data is <= 245 bytes

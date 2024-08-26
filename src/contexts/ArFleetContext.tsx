@@ -10,7 +10,7 @@ import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
 // import { experiment } from '../helpers/rsa';
 import { run } from '../helpers/hash';
-import { generateRSAKeyPair } from '../helpers/rsa';
+import { generateRSAKeyPair, RSAContainer } from '../helpers/rsa';
 import { arfleetPrivateHash, createSalt, encKeyFromMasterKeyAndSalt } from '../helpers/encrypt';
 import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
@@ -33,25 +33,6 @@ interface ArFleetContextType {
   signer: DataItemSigner | null;
   arConnected: boolean;
   connectWallet: () => Promise<void>;
-}
-
-export class RSAContainer extends Sliceable {
-  rsaKeyPair: CryptoKeyPair;
-  inner: AESEncryptedContainer;
-
-  constructor(rsaKeyPair: CryptoKeyPair, inner: AESEncryptedContainer) {
-    super();
-    this.rsaKeyPair = rsaKeyPair;
-    this.inner = inner;
-  }
-
-  async buildParts(): Promise<SliceParts> {
-    const parts: SliceParts = [];
-    const magicString = "arf::rsa";
-    parts.push([magicString.length, new TextEncoder().encode(magicString)]);
-    parts.push([await this.inner.getByteLength(), this.inner.slice.bind(this.inner)]);
-    return parts;
-  }
 }
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
@@ -165,17 +146,17 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const obj = aes;
     // await obj.downloadAsFile("test.obj");
 
-    for(let i = 0; i < 2000; i++) {
-      const ord = await obj.slice(i, i + 1);
-      const ord_extracted = ord[0];
-      const chr = String.fromCharCode(ord_extracted);
-      console.log(i, ">ord_extracted<", ord_extracted, ">chr<", chr);
+    // for(let i = 0; i < 2000; i++) {
+    //   const ord = await obj.slice(i, i + 1);
+    //   const ord_extracted = ord[0];
+    //   const chr = String.fromCharCode(ord_extracted);
+    //   console.log(i, ">ord_extracted<", ord_extracted, ">chr<", chr);
 
-      if (typeof ord_extracted !== 'number') {
-        break;
-      }
-    }
-    console.log(await obj.getByteLength());
+    //   if (typeof ord_extracted !== 'number') {
+    //     break;
+    //   }
+    // }
+    // console.log(await obj.getByteLength());
   }
 
   const connectWallet = useCallback(async () => {

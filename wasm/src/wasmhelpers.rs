@@ -1,10 +1,8 @@
 use wasm_bindgen::prelude::*;
 use sha2::{Sha256, Sha384, Digest};
-use rsa::{RsaPrivateKey, RsaPublicKey};
-use rsa::traits::PublicKeyParts;
-use rsa::hazmat::{rsa_encrypt, rsa_decrypt};
-use pkcs8::{DecodePrivateKey, DecodePublicKey};
-use num_bigint_dig::BigUint;
+use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Encrypt};
+use rand::rngs::OsRng;
+use web_sys::console;
 
 #[wasm_bindgen]
 pub enum HashType {
@@ -60,45 +58,45 @@ impl Hasher {
     }
 }
 
+// Define the RsaEncryptor struct with private and public key fields
 #[wasm_bindgen]
 pub struct RsaEncryptor {
     bits: usize,
+    priv_key: RsaPrivateKey,
+    pub_key: RsaPublicKey,
 }
 
 #[wasm_bindgen]
 impl RsaEncryptor {
+    // Initialize RSA Encryptor with keys
     #[wasm_bindgen(constructor)]
-    pub fn new(bits: usize) -> RsaEncryptor {
-        RsaEncryptor { bits }
+    pub fn new(bits: usize) -> Self {
+        console::log_1(&format!("Creating RsaEncryptor with {} bits", bits).into());
+        let mut rng = OsRng;
+        let priv_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
+        let pub_key = RsaPublicKey::from(&priv_key);
+        console::log_1(&"RsaEncryptor created successfully".into());
+        RsaEncryptor {
+            bits,
+            priv_key,
+            pub_key,
+        }
     }
 
-    pub fn encrypt_chunk(&self, chunk: &[u8], priv_key_raw: &[u8]) -> Result<Vec<u8>, JsValue> {
-        let rsa = RsaPrivateKey::from_pkcs8_der(priv_key_raw)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse private key: {}", e)))?;
-
-        let m = BigUint::from_bytes_be(chunk);
-        
-        let c = rsa_encrypt(&rsa, &m)
-            .map_err(|e| JsValue::from_str(&format!("Failed to encrypt: {}", e)))?;
-
-        Ok(c.to_bytes_be())
+    // Encrypt data
+    #[wasm_bindgen]
+    pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, JsValue> {
+        console::log_1(&format!("Encrypting data of length: {}", data.len()).into());
+        let mut rng = OsRng;
+        self.pub_key.encrypt(&mut rng, Pkcs1v15Encrypt, data)
+            .map_err(|e| JsValue::from_str(&format!("Encryption failed: {}", e)))
     }
 
-    pub fn decrypt_chunk(&self, chunk: &[u8], pub_key_raw: &[u8]) -> Result<Vec<u8>, JsValue> {
-        let rsa = RsaPublicKey::from_public_key_der(pub_key_raw)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse public key: {}", e)))?;
-
-        let c = BigUint::from_bytes_be(chunk);
-        
-        let e = rsa.e();
-        let n = rsa.n();
-        
-        let m = c.modpow(e, n);
-
-        Ok(m.to_bytes_be())
-    }
-
-    pub fn max_chunk_size(&self) -> usize {
-        self.bits / 8 - 1 // Subtract 1 to ensure the message is always smaller than the modulus
+    // Decrypt data
+    #[wasm_bindgen]
+    pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<Vec<u8>, JsValue> {
+        console::log_1(&format!("Decrypting data of length: {}", encrypted_data.len()).into());
+        self.priv_key.decrypt(Pkcs1v15Encrypt, encrypted_data)
+            .map_err(|e| JsValue::from_str(&format!("Decryption failed: {}", e)))
     }
 }
