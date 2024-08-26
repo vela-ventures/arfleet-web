@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use sha2::{Sha256, Sha384, Digest};
-use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Encrypt};
+use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Encrypt, BigUint};
+use rsa::traits::{PublicKeyParts, PrivateKeyParts};
 use rand::rngs::OsRng;
 use web_sys::console;
 
@@ -87,8 +88,9 @@ impl RsaEncryptor {
     #[wasm_bindgen]
     pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, JsValue> {
         console::log_1(&format!("Encrypting data of length: {}", data.len()).into());
-        let mut rng = OsRng;
-        self.pub_key.encrypt(&mut rng, Pkcs1v15Encrypt, data)
+        let m = BigUint::from_bytes_be(data);
+        rsa::hazmat::rsa_encrypt(&self.pub_key, &m)
+            .map(|c| c.to_bytes_be())
             .map_err(|e| JsValue::from_str(&format!("Encryption failed: {}", e)))
     }
 
@@ -96,7 +98,19 @@ impl RsaEncryptor {
     #[wasm_bindgen]
     pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<Vec<u8>, JsValue> {
         console::log_1(&format!("Decrypting data of length: {}", encrypted_data.len()).into());
-        self.priv_key.decrypt(Pkcs1v15Encrypt, encrypted_data)
+        let c = BigUint::from_bytes_be(encrypted_data);
+        rsa::hazmat::rsa_decrypt(None::<&mut OsRng>, &self.priv_key, &c)
+            .map(|m| m.to_bytes_be())
             .map_err(|e| JsValue::from_str(&format!("Decryption failed: {}", e)))
+    }
+
+    #[wasm_bindgen]
+    pub fn export_public_key(&self) -> Vec<u8> {
+        self.pub_key.n().to_bytes_be()
+    }
+
+    #[wasm_bindgen]
+    pub fn export_private_key(&self) -> Vec<u8> {
+        self.priv_key.d().to_bytes_be()
     }
 }

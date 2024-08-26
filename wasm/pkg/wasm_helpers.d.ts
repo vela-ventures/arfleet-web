@@ -41,6 +41,14 @@ export class RsaEncryptor {
 * @returns {Uint8Array}
 */
   decrypt(encrypted_data: Uint8Array): Uint8Array;
+/**
+* @returns {Uint8Array}
+*/
+  export_public_key(): Uint8Array;
+/**
+* @returns {Uint8Array}
+*/
+  export_private_key(): Uint8Array;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -55,6 +63,8 @@ export interface InitOutput {
   readonly rsaencryptor_new: (a: number) => number;
   readonly rsaencryptor_encrypt: (a: number, b: number, c: number, d: number) => void;
   readonly rsaencryptor_decrypt: (a: number, b: number, c: number, d: number) => void;
+  readonly rsaencryptor_export_public_key: (a: number, b: number) => void;
+  readonly rsaencryptor_export_private_key: (a: number, b: number) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
