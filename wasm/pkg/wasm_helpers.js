@@ -241,6 +241,17 @@ export class RsaEncryptor {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
     }
+    /**
+    * @param {Uint8Array} new_public
+    * @param {Uint8Array} new_private
+    */
+    set_swapped_keys(new_public, new_private) {
+        const ptr0 = passArray8ToWasm0(new_public, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArray8ToWasm0(new_private, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.rsaencryptor_set_swapped_keys(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+    }
 }
 
 async function __wbg_load(module, imports) {

@@ -42,26 +42,31 @@ export async function run() {
         console.log('Original input:', input);
         console.log('Buffer:', buffer);
 
-        // Encrypt
-        const encrypted = encryptor.encrypt(buffer);
-        console.log('Encrypted output:', bufferToHex(new Uint8Array(encrypted)));
+        // Export keys
+        const publicKey = encryptor.export_public_key();
+        const privateKey = encryptor.export_private_key();
+        console.log('Original Public key:', bufferToHex(new Uint8Array(publicKey)));
+        console.log('Original Private key:', bufferToHex(new Uint8Array(privateKey)));
 
-        // Decrypt
-        const decrypted = encryptor.decrypt(new Uint8Array(encrypted));
+        // Swap keys
+        const swappedEncryptor = new RsaEncryptor(bits);
+        swappedEncryptor.set_swapped_keys(privateKey, publicKey);
+        console.log('Keys swapped');
+
+        // Encrypt with swapped keys (using private key for encryption)
+        const encrypted = swappedEncryptor.encrypt(buffer);
+        console.log('Encrypted output (with swapped keys):', bufferToHex(new Uint8Array(encrypted)));
+
+        // Decrypt with swapped keys (using public key for decryption)
+        const decrypted = swappedEncryptor.decrypt(new Uint8Array(encrypted));
         const decryptedText = new TextDecoder().decode(new Uint8Array(decrypted));
-        console.log('Decrypted output:', decryptedText);
+        console.log('Decrypted output (with swapped keys):', decryptedText);
 
         if (decryptedText === input) {
-            console.log('Encryption and decryption successful!');
+            console.log('Encryption and decryption with swapped keys successful!');
         } else {
             console.error('Decrypted text does not match original input.');
         }
-
-        // Export keys (for demonstration purposes)
-        const publicKey = encryptor.export_public_key();
-        const privateKey = encryptor.export_private_key();
-        console.log('Public key:', bufferToHex(new Uint8Array(publicKey)));
-        console.log('Private key:', bufferToHex(new Uint8Array(privateKey)));
 
     } catch (err) {
         console.error('RSA operation failed:', err);

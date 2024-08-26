@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use sha2::{Sha256, Sha384, Digest};
-use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Encrypt, BigUint};
+use rsa::{RsaPrivateKey, RsaPublicKey, BigUint};
 use rsa::traits::{PublicKeyParts, PrivateKeyParts};
 use rand::rngs::OsRng;
 use web_sys::console;
@@ -63,8 +63,9 @@ impl Hasher {
 #[wasm_bindgen]
 pub struct RsaEncryptor {
     bits: usize,
-    priv_key: RsaPrivateKey,
-    pub_key: RsaPublicKey,
+    n: BigUint,
+    e: BigUint,
+    d: BigUint,
 }
 
 #[wasm_bindgen]
@@ -79,8 +80,9 @@ impl RsaEncryptor {
         console::log_1(&"RsaEncryptor created successfully".into());
         RsaEncryptor {
             bits,
-            priv_key,
-            pub_key,
+            n: pub_key.n().clone(),
+            e: pub_key.e().clone(),
+            d: priv_key.d().clone(),
         }
     }
 
@@ -89,9 +91,8 @@ impl RsaEncryptor {
     pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, JsValue> {
         console::log_1(&format!("Encrypting data of length: {}", data.len()).into());
         let m = BigUint::from_bytes_be(data);
-        rsa::hazmat::rsa_encrypt(&self.pub_key, &m)
-            .map(|c| c.to_bytes_be())
-            .map_err(|e| JsValue::from_str(&format!("Encryption failed: {}", e)))
+        let c = m.modpow(&self.e, &self.n);
+        Ok(c.to_bytes_be())
     }
 
     // Decrypt data
@@ -99,18 +100,24 @@ impl RsaEncryptor {
     pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<Vec<u8>, JsValue> {
         console::log_1(&format!("Decrypting data of length: {}", encrypted_data.len()).into());
         let c = BigUint::from_bytes_be(encrypted_data);
-        rsa::hazmat::rsa_decrypt(None::<&mut OsRng>, &self.priv_key, &c)
-            .map(|m| m.to_bytes_be())
-            .map_err(|e| JsValue::from_str(&format!("Decryption failed: {}", e)))
+        let m = c.modpow(&self.d, &self.n);
+        Ok(m.to_bytes_be())
     }
 
     #[wasm_bindgen]
     pub fn export_public_key(&self) -> Vec<u8> {
-        self.pub_key.n().to_bytes_be()
+        self.n.to_bytes_be()
     }
 
     #[wasm_bindgen]
     pub fn export_private_key(&self) -> Vec<u8> {
-        self.priv_key.d().to_bytes_be()
+        self.d.to_bytes_be()
+    }
+
+    #[wasm_bindgen]
+    pub fn set_swapped_keys(&mut self, new_public: &[u8], new_private: &[u8]) {
+        self.n = BigUint::from_bytes_be(new_public);
+        self.d = BigUint::from_bytes_be(new_private);
+        // We keep the original 'e' value
     }
 }
