@@ -23,6 +23,25 @@ export class Hasher {
 */
   finalize(): Uint8Array;
 }
+/**
+*/
+export class RsaEncryptor {
+  free(): void;
+/**
+* @param {number} bits
+*/
+  constructor(bits: number);
+/**
+* @param {Uint8Array} chunk
+* @param {Uint8Array} priv_key_raw
+* @returns {Uint8Array}
+*/
+  encrypt_chunk(chunk: Uint8Array, priv_key_raw: Uint8Array): Uint8Array;
+/**
+* @returns {number}
+*/
+  max_chunk_size(): number;
+}
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -32,6 +51,10 @@ export interface InitOutput {
   readonly hasher_new: (a: number) => number;
   readonly hasher_update: (a: number, b: number, c: number) => void;
   readonly hasher_finalize: (a: number, b: number) => void;
+  readonly __wbg_rsaencryptor_free: (a: number, b: number) => void;
+  readonly rsaencryptor_new: (a: number) => number;
+  readonly rsaencryptor_encrypt_chunk: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly rsaencryptor_max_chunk_size: (a: number) => number;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;

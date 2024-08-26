@@ -10,3 +10,26 @@ path = "src/wasmhelpers.rs"
 [dependencies]
 wasm-bindgen = "0.2"
 sha2 = "0.10"
+rsa = { version = "0.9", features = ["hazmat"] }
+pkcs8 = { version = "0.10", features = ["std"] }
+num-bigint-dig = "0.8"
+rand = "0.8"
+getrandom = { version = "0.2", features = ["js"] }
+
+[dependencies.web-sys]
+version = "0.3"
+features = ["Window", "Crypto"]
+
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.test]
+opt-level = 3
+
+[profile.bench]
+opt-level = 3

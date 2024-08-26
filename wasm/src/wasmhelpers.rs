@@ -1,5 +1,9 @@
 use wasm_bindgen::prelude::*;
 use sha2::{Sha256, Sha384, Digest};
+use rsa::RsaPrivateKey;
+use rsa::hazmat::rsa_encrypt;
+use pkcs8::DecodePrivateKey;
+use num_bigint_dig::BigUint;
 
 #[wasm_bindgen]
 pub enum HashType {
@@ -52,5 +56,35 @@ impl Hasher {
                 result
             },
         }
+    }
+}
+
+#[wasm_bindgen]
+pub struct RsaEncryptor {
+    bits: usize,
+}
+
+#[wasm_bindgen]
+impl RsaEncryptor {
+    #[wasm_bindgen(constructor)]
+    pub fn new(bits: usize) -> RsaEncryptor {
+        RsaEncryptor { bits }
+    }
+
+    pub fn encrypt_chunk(&self, chunk: &[u8], priv_key_raw: &[u8]) -> Result<Vec<u8>, JsValue> {
+        let rsa = RsaPrivateKey::from_pkcs8_der(priv_key_raw)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse private key: {}", e)))?;
+
+        let m = BigUint::from_bytes_be(chunk);
+        
+        // Use rsa_encrypt from the hazmat module for raw RSA encryption
+        let c = rsa_encrypt(&rsa, &m)
+            .map_err(|e| JsValue::from_str(&format!("Failed to encrypt: {}", e)))?;
+
+        Ok(c.to_bytes_be())
+    }
+
+    pub fn max_chunk_size(&self) -> usize {
+        self.bits / 8 - 1 // Subtract 1 to ensure the message is always smaller than the modulus
     }
 }

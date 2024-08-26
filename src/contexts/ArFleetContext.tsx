@@ -8,7 +8,8 @@ import { DeepHashPointer } from '../helpers/deephashmod';
 import { b64UrlToBuffer } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
-import { experiment } from '../helpers/rsa';
+// import { experiment } from '../helpers/rsa';
+import { run } from '../helpers/hash';
 import { generateRSAKeyPair } from '../helpers/rsa';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
@@ -88,7 +89,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     console.log('experiment')
-    experiment();
+    run();
   }, []);
 
   useEffect(() => {
