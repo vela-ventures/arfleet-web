@@ -130,7 +130,7 @@ export async function createDataItemWithDataHash(
             bytes.set(_tags, tags_start + 16);
           }
 
-          downloadUint8ArrayAsFile(bytes, "dataitem.bin");
+          // downloadUint8ArrayAsFile(bytes, "dataitem.bin");
 
           return bytes;
         }

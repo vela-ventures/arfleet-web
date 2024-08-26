@@ -28,50 +28,5 @@
         }
       })();
     </script>
-
-    <script>
-      (async () => {
-        try {
-          console.log("Generating key pair...");
-          const keyPair = await crypto.subtle.generateKey(
-            {
-              name: "RSASSA-PKCS1-v1_5",
-              modulusLength: 2048,
-              publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-              hash: { name: "SHA-256" }, // This is required by the API but won't be used for hashing
-            },
-            true,
-            ["sign", "verify"]
-          );
-
-          const data = new TextEncoder().encode("Hello World"); // Ensure data is <= 245 bytes
-
-          // Sign the data using the private key
-          const signature = await crypto.subtle.sign(
-            {
-              name: "RSASSA-PKCS1-v1_5",
-            },
-            keyPair.privateKey,
-            data
-          );
-
-          console.log(new Uint8Array(signature));
-
-          // Verify the signature using the public key
-          const isValid = await crypto.subtle.verify(
-            {
-              name: "RSASSA-PKCS1-v1_5",
-            },
-            keyPair.publicKey,
-            signature,
-            data
-          );
-
-          console.log("Signature valid:", isValid);
-        } catch (err) {
-          console.error("Signature error:", err);
-        }
-      })();
-    </script>
   </body>
 </html>

@@ -35,6 +35,11 @@ export function bufferToHex(buffer: ArrayBuffer): string {
     .join('');
 }
 
+export function hexToBuffer(hex: string): ArrayBuffer {
+  const bytes = hex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || [];
+  return new Uint8Array(bytes).buffer;
+}
+
 
 export function byteArrayToLong(byteArray: Uint8Array): number {
   let value = 0;

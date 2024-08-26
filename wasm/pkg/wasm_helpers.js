@@ -181,6 +181,33 @@ export class RsaEncryptor {
         }
     }
     /**
+    * @param {Uint8Array} chunk
+    * @param {Uint8Array} pub_key_raw
+    * @returns {Uint8Array}
+    */
+    decrypt_chunk(chunk, pub_key_raw) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passArray8ToWasm0(chunk, wasm.__wbindgen_malloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArray8ToWasm0(pub_key_raw, wasm.__wbindgen_malloc);
+            const len1 = WASM_VECTOR_LEN;
+            wasm.rsaencryptor_decrypt_chunk(retptr, this.__wbg_ptr, ptr0, len0, ptr1, len1);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+            if (r3) {
+                throw takeObject(r2);
+            }
+            var v3 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_free(r0, r1 * 1, 1);
+            return v3;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
     * @returns {number}
     */
     max_chunk_size() {

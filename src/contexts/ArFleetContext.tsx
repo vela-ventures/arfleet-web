@@ -5,6 +5,7 @@ import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/h
 import { privateHash } from '../helpers/extra';
 import { createDataItemWithDataHash } from '../helpers/dataitemmod';
 import { DeepHashPointer } from '../helpers/deephashmod';
+import { concatBuffers } from '../helpers/buf';
 import { b64UrlToBuffer } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
@@ -14,6 +15,13 @@ import { generateRSAKeyPair } from '../helpers/rsa';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
+
+const createSalt = () => {
+  return crypto.getRandomValues(new Uint8Array(32)).join('-');
+}
+const encKeyFromMasterKeyAndSalt = async(masterKey: Uint8Array, salt: Uint8Array): Promise<Uint8Array> => {
+  return await sha256(await sha256(concatBuffers([masterKey, salt])));
+}
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
 
@@ -29,6 +37,11 @@ interface ArFleetContextType {
   arConnected: boolean;
   connectWallet: () => Promise<void>;
 }
+
+type EncryptedContainer = {
+  dataItem: DataItem;
+  salt: string;
+};
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
 
@@ -355,9 +368,17 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const dataItemPrepareToSign = await dataItem?.prepareToSign();
 
       // sign data item
-      const dataItemSignature = await wallet.signMessage(dataItemPrepareToSign, {
+      dataItem.signature = await wallet.signMessage(dataItemPrepareToSign, {
         hashAlgorithm: 'SHA-384',
-      });
+      })
+
+      dataItem.rawFile = rawFile;
+
+      // create encrypted container
+      const encryptedContainer: EncryptedContainer = {
+        dataItem,
+        salt: createSalt(),
+      }
 
       updatedFiles.push({
         ...file,
@@ -403,7 +424,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log(`Signature:`, file.dataItemSignature);
       console.log('---');
     });
-  };
+  }; // end processAssignment
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const newAssignment: StorageAssignment = {
