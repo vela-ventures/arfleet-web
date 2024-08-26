@@ -1,8 +1,14 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { StorageAssignment, FileMetadata, Placement } from '../types';
 import { Buffer } from 'buffer';
-import { sha256, privateHash, makeHasher, HashType, createDataItemWithDataHash, sha256hex, sha384hex, DeepHashPointer, bufferToHex } from '../helpers';
+import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/hash';
+import { privateHash } from '../helpers/extra';
+import { createDataItemWithDataHash } from '../helpers/dataitemmod';
+import { DeepHashPointer } from '../helpers/deephashmod';
+import { b64UrlToBuffer } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
+import { bufferToHex } from '../helpers/buf';
+import { experiment } from '../helpers/rsa';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -48,6 +54,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [wallet, setWallet] = useState<any | null>(null);
   const [signer, setSigner] = useState<DataItemSigner | null>(null);
   const [address, setAddress] = useState<string | null>(null);
+  const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
+  const [pubKey, setPubKey] = useState<ArrayBuffer | null>(null);
 
   const connectWallet = useCallback(async () => {
     if (globalThis.arweaveWallet) {
@@ -59,6 +67,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       try {
         const address_ = await wallet_.getActiveAddress();
         setAddress(address_);
+
+        const pubKeyB64_ = await wallet_.getActivePublicKey();
+        setPubKeyB64(pubKeyB64_);
+        // console.log('pubKeyB64', pubKeyB64_);
+        const pubKey_ = b64UrlToBuffer(pubKeyB64_);
+        setPubKey(pubKey_);
+        // console.log('pubKey', pubKey_);
+
         setArConnected(true);
       } catch (e) {
         console.error("Error connecting to wallet:", e);
@@ -67,6 +83,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } else {
       setArConnected(false);
     }
+  }, []);
+
+  useEffect(() => {
+    console.log('experiment')
+    experiment();
   }, []);
 
   useEffect(() => {
@@ -328,7 +349,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // create data item
       if (!address) throw new Error('Address not found');
-      const dataItem = await createDataItemWithDataHash(pointer, address, new Uint8Array(), []);
+      const dataItem = await createDataItemWithDataHash(pointer, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
       const dataItemPrepareToSign = await dataItem?.prepareToSign();
 
       // sign data item
@@ -344,6 +365,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         dataItemPrepareToSign,
         dataItemSignature,
       });
+
+      const dataItemBin = await dataItem?.exportBinaryHeader();
+      console.log({dataItemBin})
     }
 
     const assignmentHash = await sha256hex(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
