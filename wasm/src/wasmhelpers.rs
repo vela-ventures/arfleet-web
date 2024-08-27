@@ -98,7 +98,14 @@ impl RsaEncryptor {
         let s = m.modpow(&d, &n);
         console::log_1(&format!("s: {}", s).into());
         
-        Ok(s.to_bytes_be())
+        let mut result = s.to_bytes_be();
+        let n_len = n.to_bytes_be().len();
+        // Pad the result with leading zeros if necessary
+        while result.len() < n_len {
+            result.insert(0, 0);
+        }
+        
+        Ok(result)
     }
 
     // Note: we're using public for decryption, just like in node.js/openssl decryptPublic
@@ -119,6 +126,13 @@ impl RsaEncryptor {
         let m = s.modpow(&e, &n);
         console::log_1(&format!("m: {}", m).into());
         
-        Ok(m.to_bytes_be())
+        let mut result = m.to_bytes_be();
+        let n_len = n.to_bytes_be().len();
+        // Pad the result with leading zeros if necessary
+        while result.len() < n_len - 1 {  // Note the -1 here
+            result.insert(0, 0);
+        }
+        
+        Ok(result)
     }
 }
