@@ -35,35 +35,44 @@ export async function run() {
     const bits = 2048;
 
     try {
-        const encryptor = new RsaEncryptor(bits);
-        console.log('RSA Encryptor created');
+        const keyPair = await window.crypto.subtle.generateKey(
+            {
+                name: "RSA-OAEP",
+                modulusLength: bits,
+                publicExponent: new Uint8Array([1, 0, 1]),
+                hash: "SHA-256",
+            },
+            true,
+            ["encrypt", "decrypt"]
+        );
 
+        const publicKey = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
+        const privateKey = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
+
+        const n = base64UrlToBuffer(publicKey.n!);
+        const e = base64UrlToBuffer(publicKey.e!);
+        const d = base64UrlToBuffer(privateKey.d!);
+
+        console.log('Public key (n):', bufferToHex(n));
+        console.log('Public exponent (e):', bufferToHex(e));
+        console.log('Private exponent (d):', bufferToHex(d));
+
+        const encryptor = new RsaEncryptor();
         const buffer = new TextEncoder().encode(input);
         console.log('Original input:', input);
-        console.log('Buffer:', buffer);
+        console.log('Buffer:', bufferToHex(buffer));
 
-        // Export keys
-        const publicKey = encryptor.export_public_key();
-        const privateKey = encryptor.export_private_key();
-        console.log('Original Public key:', bufferToHex(new Uint8Array(publicKey)));
-        console.log('Original Private key:', bufferToHex(new Uint8Array(privateKey)));
+        const encrypted = encryptor.private_encrypt(buffer, n, d);
+        console.log('Encrypted output:', bufferToHex(new Uint8Array(encrypted)));
 
-        // Swap keys
-        const swappedEncryptor = new RsaEncryptor(bits);
-        swappedEncryptor.set_swapped_keys(privateKey, publicKey);
-        console.log('Keys swapped');
-
-        // Encrypt with swapped keys (using private key for encryption)
-        const encrypted = swappedEncryptor.encrypt(buffer);
-        console.log('Encrypted output (with swapped keys):', bufferToHex(new Uint8Array(encrypted)));
-
-        // Decrypt with swapped keys (using public key for decryption)
-        const decrypted = swappedEncryptor.decrypt(new Uint8Array(encrypted));
+        const decrypted = encryptor.public_decrypt(new Uint8Array(encrypted), n, e);
+        console.log('Decrypted output (raw):', bufferToHex(new Uint8Array(decrypted)));
+        
         const decryptedText = new TextDecoder().decode(new Uint8Array(decrypted));
-        console.log('Decrypted output (with swapped keys):', decryptedText);
+        console.log('Decrypted output (as UTF-8):', decryptedText);
 
         if (decryptedText === input) {
-            console.log('Encryption and decryption with swapped keys successful!');
+            console.log('Encryption and decryption successful!');
         } else {
             console.error('Decrypted text does not match original input.');
         }
@@ -71,6 +80,17 @@ export async function run() {
     } catch (err) {
         console.error('RSA operation failed:', err);
     }
+}
+
+// Helper function to convert base64url to ArrayBuffer
+function base64UrlToBuffer(base64url: string): Uint8Array {
+    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(base64);
+    const buffer = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        buffer[i] = binary.charCodeAt(i);
+    }
+    return buffer;
 }
 
 // Run the test

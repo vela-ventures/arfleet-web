@@ -28,32 +28,22 @@ export class Hasher {
 export class RsaEncryptor {
   free(): void;
 /**
-* @param {number} bits
 */
-  constructor(bits: number);
+  constructor();
 /**
 * @param {Uint8Array} data
+* @param {Uint8Array} n
+* @param {Uint8Array} d
 * @returns {Uint8Array}
 */
-  encrypt(data: Uint8Array): Uint8Array;
+  private_encrypt(data: Uint8Array, n: Uint8Array, d: Uint8Array): Uint8Array;
 /**
 * @param {Uint8Array} encrypted_data
+* @param {Uint8Array} n
+* @param {Uint8Array} e
 * @returns {Uint8Array}
 */
-  decrypt(encrypted_data: Uint8Array): Uint8Array;
-/**
-* @returns {Uint8Array}
-*/
-  export_public_key(): Uint8Array;
-/**
-* @returns {Uint8Array}
-*/
-  export_private_key(): Uint8Array;
-/**
-* @param {Uint8Array} new_public
-* @param {Uint8Array} new_private
-*/
-  set_swapped_keys(new_public: Uint8Array, new_private: Uint8Array): void;
+  public_decrypt(encrypted_data: Uint8Array, n: Uint8Array, e: Uint8Array): Uint8Array;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -65,16 +55,12 @@ export interface InitOutput {
   readonly hasher_update: (a: number, b: number, c: number) => void;
   readonly hasher_finalize: (a: number, b: number) => void;
   readonly __wbg_rsaencryptor_free: (a: number, b: number) => void;
-  readonly rsaencryptor_new: (a: number) => number;
-  readonly rsaencryptor_encrypt: (a: number, b: number, c: number, d: number) => void;
-  readonly rsaencryptor_decrypt: (a: number, b: number, c: number, d: number) => void;
-  readonly rsaencryptor_export_public_key: (a: number, b: number) => void;
-  readonly rsaencryptor_export_private_key: (a: number, b: number) => void;
-  readonly rsaencryptor_set_swapped_keys: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly rsaencryptor_new: () => number;
+  readonly rsaencryptor_private_encrypt: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+  readonly rsaencryptor_public_decrypt: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_free: (a: number, b: number, c: number) => void;
-  readonly __wbindgen_exn_store: (a: number) => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;
