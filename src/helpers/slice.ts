@@ -1,5 +1,6 @@
 import { concatBuffers } from "./buf";
 import { readFileChunk } from "./buf";
+import { downloadUint8ArrayAsFile } from "./extra";
 
 /*
 *   Slice(start, end) means:
@@ -83,7 +84,11 @@ export abstract class Sliceable {
         }
         
         return concatBuffers(result);
-    }  
+    }
+
+    async downloadAsFile(filename: string): Promise<void> {
+      await downloadUint8ArrayAsFile(new Uint8Array(await this.slice(0, await this.getByteLength())), filename);
+    }
 
     abstract buildParts(): Promise<SliceParts>;
 }

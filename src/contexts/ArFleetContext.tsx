@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { StorageAssignment, FileMetadata, Placement } from '../types';
 import { Buffer } from 'buffer';
 import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/hash';
-import { createDataItemWithDataHash, createDataItemWithBuffer } from '../helpers/dataitemmod';
+import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithAESContainer } from '../helpers/dataitemmod';
 import { DeepHashPointer } from '../helpers/deephashmod';
 import { concatBuffers } from '../helpers/buf';
 import { b64UrlToBuffer } from '../helpers/encodeUtils';
@@ -10,7 +10,7 @@ import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
 // import { experiment } from '../helpers/rsa';
 import { run } from '../helpers/hash';
-import { generateRSAKeyPair, RSAContainer } from '../helpers/rsa';
+import { generateRSAKeyPair, keyPairToRsaKey, RSAContainer } from '../helpers/rsa';
 import { arfleetPrivateHash, createSalt, encKeyFromMasterKeyAndSalt } from '../helpers/encrypt';
 import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
@@ -129,21 +129,32 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [pubKey, setPubKey] = useState<ArrayBuffer | null>(null);
   const [masterKey, setMasterKey] = useState<Uint8Array | null>(null);
 
+  const createRandomFile = (text: string) => {
+    const data = new Uint8Array(text.length * 1000000);
+    for (let i = 0; i < 1000000; i++) {
+      data.set(new TextEncoder().encode(text), i * text.length);
+    }
+    return data;
+  }
+
   const runExp = async () => {
     const rsaKeyPair = await generateRSAKeyPair();
     console.log('rsaKeyPair', rsaKeyPair);
-    const data = new TextEncoder().encode("Hello, world!");
-    const dataItem = await createDataItemWithBuffer(data, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+    const files = [ createRandomFile("Hello, world!"), createRandomFile("ABC"), createRandomFile("1234567890") ];
+    // const folder = await createFolder();
+    const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
     const salt = createSalt();
     if (!masterKey) throw new Error('Master key not found');
     const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
     const iv = createSalt(AES_IV_BYTE_LENGTH);
     const aes = new AESEncryptedContainer(dataItem, salt, secretKey, iv);
+    const encryptedDataItem = await createDataItemWithAESContainer(aes, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
     console.log('aes', aes);
-    const container = new RSAContainer(rsaKeyPair, aes);
+    const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
     console.log('container', container);
 
-    const obj = aes;
+    const obj = container;
+    obj.downloadAsFile("test.obj");
     // await obj.downloadAsFile("test.obj");
 
     // for(let i = 0; i < 2000; i++) {

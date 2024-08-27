@@ -5,6 +5,7 @@ import { sha384 } from "./hash";
 import { deepHash, deepHashChunks, DeepHashPointer } from "./deephashmod";
 import { downloadUint8ArrayAsFile } from "./extra";
 import { Sliceable, SliceParts } from "./slice";
+import { AESEncryptedContainer } from "./aes";
 
 export class DataItem extends Sliceable {
     signatureType: Uint8Array;
@@ -20,8 +21,10 @@ export class DataItem extends Sliceable {
     // exportSigned(signature: Uint8Array): Promise<any>;
     // exportBinaryHeader(signature?: Uint8Array): Promise<Uint8Array>;
     signature: Uint8Array | null;
-    rawFile: File | Uint8Array | null;
+    rawFile: File | Uint8Array | AESEncryptedContainer | null;
     dataByteLength: number;
+
+    cachedDataItemLength: number | null;
 
     binaryHeaderCached: Uint8Array | null;
 
@@ -32,7 +35,7 @@ export class DataItem extends Sliceable {
         target: string | null,
         anchor: string | null,
         tags: Tag[],
-        rawFile: File | Uint8Array | null
+        rawFile: File | Uint8Array | AESEncryptedContainer | null
     ) {
         super();
         this.signatureType = new Uint8Array([1, 0]); // Arweave
@@ -46,6 +49,7 @@ export class DataItem extends Sliceable {
         this.rawFile = rawFile;
         this.binaryHeaderCached = null;
         this.dataByteLength = dataByteLength;
+        this.cachedDataItemLength = null;
     }
 
     async prepareToSign(): Promise<Uint8Array> {
@@ -84,6 +88,23 @@ export class DataItem extends Sliceable {
 
     async exportSigned(signature: Uint8Array): Promise<Uint8Array> {
       //
+    }
+
+    async getByteLength(): Promise<number> {
+      if (this.cachedDataItemLength) return this.cachedDataItemLength;
+
+      const _target = this.target ? b64UrlToBuffer(this.target) : null;
+      const target_length = 1 + (_target?.byteLength ?? 0);
+      const _anchor = this.anchor ? b64UrlToBuffer(this.anchor) : null;
+      const anchor_length = 1 + (_anchor?.byteLength ?? 0);
+      const _tags = (this.tags?.length ?? 0) > 0 ? serializeTags(this.tags) : null;
+      const tags_length = 16 + (_tags ? _tags.byteLength : 0);
+      const _owner = b64UrlToBuffer(this.owner);
+      const owner_length = _owner.byteLength;
+
+      const length = 2 + this.signatureLength + owner_length + target_length + anchor_length + tags_length;
+      this.cachedDataItemLength = length;
+      return length;
     }
 
     async exportBinaryHeader(signature?: Uint8Array): Promise<Uint8Array> {
@@ -158,7 +179,9 @@ export class DataItem extends Sliceable {
 
       parts.push([this.binaryHeaderCached.byteLength, this.binaryHeaderCached]);
       if (this.rawFile) {
-        if (this.rawFile instanceof File) {
+        if (this.rawFile instanceof AESEncryptedContainer) {
+          parts.push([await this.rawFile.getByteLength(), this.rawFile.slice.bind(this.rawFile)]);
+        } else if (this.rawFile instanceof File) {
           parts.push([this.rawFile.size, this.rawFile]);
         } else if (this.rawFile instanceof Uint8Array) {
           parts.push([this.rawFile.byteLength, this.rawFile]);
@@ -168,10 +191,6 @@ export class DataItem extends Sliceable {
       console.log("parts", parts);
 
       return parts;
-    }
-
-    async downloadAsFile(filename: string): Promise<void> {
-        await downloadUint8ArrayAsFile(new Uint8Array(await this.getRawBinary()), filename);
     }
 
     async getRawBinary(): Promise<Uint8Array> {
@@ -211,6 +230,18 @@ export async function createDataItemWithBuffer(
   tags: Tag[]
 ): Promise<DataItem> {
   const dataItem = new DataItem(buffer.byteLength, null, owner, target, anchor, tags, buffer);
+
+  return dataItem;
+}
+
+export async function createDataItemWithAESContainer(
+  aes: AESEncryptedContainer,
+  owner: string,
+  target: string | null,
+  anchor: string | null,
+  tags: Tag[]
+): Promise<DataItem> {
+  const dataItem = new DataItem(await aes.getByteLength(), null, owner, target, anchor, tags, aes);
 
   return dataItem;
 }
