@@ -9,6 +9,8 @@ const RSA_KEY_SIZE = 1024;
 const RSA_ENCRYPTED_CHUNK_SIZE = RSA_KEY_SIZE / 8;
 const RSA_UNDERLYING_CHUNK_SIZE = RSA_ENCRYPTED_CHUNK_SIZE - 1;
 
+const log = (...args: any[]) => (false) ? console.log('[RSA]', ...args) : null;
+
 export class RSAContainer extends EncryptedContainer {
   private rsaKeyPair: CryptoKeyPair;
   private cachedRsaKey: RsaKey | null = null;
@@ -21,6 +23,7 @@ export class RSAContainer extends EncryptedContainer {
 
     this.underlyingChunkSize = RSA_UNDERLYING_CHUNK_SIZE;
     this.encryptedChunkSize = RSA_ENCRYPTED_CHUNK_SIZE;
+    this.log = log;
   }
 
   private async initialize() {
@@ -55,31 +58,31 @@ export class RSAContainer extends EncryptedContainer {
   }
 
   async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
-    console.log('RSA encryptChunk', chunkIdx, this.rsaKeyPair)
+    this.log('encryptChunk', chunkIdx, this.rsaKeyPair)
 
     await this.initialize();
     if (this.chunkCache.has(chunkIdx)) {
-      return this.chunkCache.get(chunkIdx)!;
+      return this.chunkCache.get(chunkIdx)!.encryptedChunk;
     }
 
     const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
     
-    console.log("RSA.inner byte length", await this.inner!.getByteLength());
+    this.log("inner byte length", await this.inner!.getByteLength());
 
-    console.log("RSA chunkIdx", chunkIdx, "/", this.chunkCount);
+    this.log("chunkIdx", chunkIdx, "/", this.chunkCount);
 
-    console.log("RSA: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
+    this.log("RSA: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
     const chunk = await this.inner!.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
 
-    console.log("RSA plaintext chunk", chunk);
+    this.log("RSA plaintext chunk", chunk);
 
-    console.log('RSA underlyingChunkStart', chunkUnderlyingStart)
-    console.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
+    this.log('RSA underlyingChunkStart', chunkUnderlyingStart)
+    this.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
 
     const rsaKey = await this.getRsaKey();
     const encryptedChunk = await rsaEncrypt(chunk, rsaKey);
 
-    this.chunkCache.set(chunkIdx, encryptedChunk);
+    this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
 
     // Keep only the last N chunks in the cache
     const maxCacheSize = 5;
@@ -90,7 +93,7 @@ export class RSAContainer extends EncryptedContainer {
       }
     }
 
-    console.log('RSA encrypted chunk', encryptedChunk)
+    this.log('encrypted chunk', encryptedChunk)
 
     return encryptedChunk;
   }
@@ -204,9 +207,9 @@ export async function rsaEncrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Ar
     throw new Error(`Data is too long: ${data.length} bytes, maximum is ${maxSize} bytes`);
   }
   const paddedData = padRight(data, key.bits / 8);
-  console.log(`RSA Encrypting data (${paddedData.length} bytes): ${bufferToHex(paddedData)}`);
+  log(`RSA Encrypting data (${paddedData.length} bytes): ${bufferToHex(paddedData)}`);
   const encrypted = new Uint8Array(encryptor.private_encrypt(paddedData, key.n, key.d));
-  console.log(`RSA Encrypted result (${encrypted.length} bytes): ${bufferToHex(encrypted)}`);
+  log(`RSA Encrypted result (${encrypted.length} bytes): ${bufferToHex(encrypted)}`);
   return encrypted;
 }
 
@@ -214,9 +217,9 @@ export async function rsaDecrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Ar
   if (!encryptor) {
       throw new Error("RSA not initialized. Call initRsa() first.");
   }
-  console.log(`RSA Decrypting data (${data.length} bytes): ${bufferToHex(data)}`);
+  log(`RSA Decrypting data (${data.length} bytes): ${bufferToHex(data)}`);
   const decrypted = new Uint8Array(encryptor.public_decrypt(data, key.n, key.e));
-  console.log(`RSA Decrypted result (${decrypted.length} bytes): ${bufferToHex(decrypted)}`);
+  log(`RSA Decrypted result (${decrypted.length} bytes): ${bufferToHex(decrypted)}`);
   return decrypted;
 }
 

@@ -20,7 +20,7 @@ import { createFolder } from '@/helpers/folder';
 import { PlacementBlob } from '@/helpers/placementBlob';
 import {produce} from 'immer';
 
-const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
@@ -362,6 +362,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, placementBlobLength);
+      console.log('placementBlobLength', placementBlobLength)
+      console.log('pb chunkCount', chunkCount)
+      console.log('pb chunkIndex', chunkIndex)
+      console.log('pb start', start)
+      console.log('pb end', end)
       const chunk = await placementBlob.slice(start, end);
       
       try {

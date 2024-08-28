@@ -78,25 +78,25 @@ impl RsaEncryptor {
     // Note: there is no padding, which is by design
     #[wasm_bindgen]
     pub fn private_encrypt(&self, data: &[u8], n: &[u8], d: &[u8]) -> Result<Vec<u8>, JsValue> {
-        console::log_1(&format!("Private encrypting data of length: {}", data.len()).into());
+        // console::log_1(&format!("Private encrypting data of length: {}", data.len()).into());
         
         let m = BigUint::from_bytes_be(data);
-        console::log_1(&format!("m: {}", m).into());
+        // console::log_1(&format!("m: {}", m).into());
         
         let n = BigUint::from_bytes_be(n);
         if n == BigUint::from(0u32) {
             return Err(JsValue::from_str("Invalid modulus (n): cannot be zero"));
         }
-        console::log_1(&format!("n: {}", n).into());
+        // console::log_1(&format!("n: {}", n).into());
         
         let d = BigUint::from_bytes_be(d);
         if d == BigUint::from(0u32) {
             return Err(JsValue::from_str("Invalid private exponent (d): cannot be zero"));
         }
-        console::log_1(&format!("d: {}", d).into());
+        // console::log_1(&format!("d: {}", d).into());
         
         let s = m.modpow(&d, &n);
-        console::log_1(&format!("s: {}", s).into());
+        // console::log_1(&format!("s: {}", s).into());
         
         let mut result = s.to_bytes_be();
         let n_len = n.to_bytes_be().len();
@@ -112,19 +112,19 @@ impl RsaEncryptor {
     // Note: there is no padding, which is by design
     #[wasm_bindgen]
     pub fn public_decrypt(&self, encrypted_data: &[u8], n: &[u8], e: &[u8]) -> Result<Vec<u8>, JsValue> {
-        console::log_1(&format!("Public decrypting data of length: {}", encrypted_data.len()).into());
+        // console::log_1(&format!("Public decrypting data of length: {}", encrypted_data.len()).into());
         
         let s = BigUint::from_bytes_be(encrypted_data);
-        console::log_1(&format!("s: {}", s).into());
+        // console::log_1(&format!("s: {}", s).into());
         
         let n = BigUint::from_bytes_be(n);
-        console::log_1(&format!("n: {}", n).into());
+        // console::log_1(&format!("n: {}", n).into());
         
         let e = BigUint::from_bytes_be(e);
-        console::log_1(&format!("e: {}", e).into());
+        // console::log_1(&format!("e: {}", e).into());
         
         let m = s.modpow(&e, &n);
-        console::log_1(&format!("m: {}", m).into());
+        // console::log_1(&format!("m: {}", m).into());
         
         let mut result = m.to_bytes_be();
         let n_len = n.to_bytes_be().len();

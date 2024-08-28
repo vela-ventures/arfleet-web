@@ -28,9 +28,17 @@ export type SlicePart = [SliceLength, (
 )];
 export type SliceParts = SlicePart[];
 
+const log = (...args: any[]) => (true) ? console.log('[Sliceable]', ...args) : null;
+
 export abstract class Sliceable {
     partsCached: SliceParts | null = null;
     byteLengthCached: number | null = null;
+
+    log: (...args: any[]) => void;
+
+    constructor(...args: any[]) {
+      this.log = log;
+    }
 
     async getParts(): Promise<SliceParts> {
         if (this.partsCached !== null) return this.partsCached;

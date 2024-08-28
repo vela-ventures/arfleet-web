@@ -10,16 +10,12 @@ const AES_OVERHEAD = 16;
 
 const AES_UNDERLYING_CHUNK_SIZE = AES_CHUNK_SIZE - AES_OVERHEAD;
 
-type ChunkCacheEntry = {
-    plainChunk: Uint8Array;
-    encryptedChunk: Uint8Array;
-}
+const log = (...args: any[]) => (false) ? console.log('[AES]', ...args) : null;
 
 export class AESEncryptedContainer extends EncryptedContainer {
     salt: Uint8Array;
     secretKey: Uint8Array;
     iv: Uint8Array;
-    chunkCache: Map<number, ChunkCacheEntry>;
   
     constructor(inner: Sliceable, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array) {
       super();
@@ -31,10 +27,11 @@ export class AESEncryptedContainer extends EncryptedContainer {
       this.salt = salt;
       this.secretKey = secretKey;
       this.iv = iv;
-      this.chunkCache = new Map<number, ChunkCacheEntry>();
       if (iv.length !== AES_IV_BYTE_LENGTH) {
         throw new Error(`Invalid IV length: ${iv.length}, expected ${AES_IV_BYTE_LENGTH}`);
       }
+
+      this.log = log;
     }
 
     async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
@@ -42,7 +39,7 @@ export class AESEncryptedContainer extends EncryptedContainer {
             return this.chunkCache.get(chunkIdx)!.plainChunk;
         }
 
-        console.log("AES: encrypting chunk", chunkIdx, "(not found in cache)");
+        this.log("encrypting chunk", chunkIdx, "(not found in cache)");
 
         let previousChunk = null;
         if (chunkIdx > 0) {
@@ -59,14 +56,14 @@ export class AESEncryptedContainer extends EncryptedContainer {
 
         const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
 
-        console.log("AES.inner byte length", await this.inner!.getByteLength());
+        this.log("AES.inner byte length", await this.inner!.getByteLength());
 
-        console.log("chunkIdx", chunkIdx, "/", this.chunkCount);
+        this.log("chunkIdx", chunkIdx, "/", this.chunkCount);
 
-        console.log("AES: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
+        this.log("AES: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
         const chunk = await this.inner!.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
 
-        console.log("AES plaintext chunk", chunk);
+        this.log("AES plaintext chunk", chunk);
 
         // XOR with previous chunk ciphertext
         const chunkXored = new Uint8Array(chunk.length);
@@ -86,8 +83,8 @@ export class AESEncryptedContainer extends EncryptedContainer {
             }
         }
         
-        console.log("AES encryptedChunk", encryptedChunk);
-        console.log("AES iv", iv);
+        this.log("AES encryptedChunk", encryptedChunk);
+        this.log("AES iv", iv);
 
         return encryptedChunk;
     }

@@ -1,11 +1,16 @@
 import { Sliceable } from "./sliceable";
 
+type ChunkCacheEntry = {
+  plainChunk: Uint8Array;
+  encryptedChunk: Uint8Array;
+}
+
 export abstract class EncryptedContainer extends Sliceable {
   encryptedChunkSize: number;
   underlyingChunkSize: number;
   chunkCount: number;
   inner: Sliceable | null;
-  chunkCache: Map<number, Uint8Array>;
+  chunkCache: Map<number, ChunkCacheEntry>;
 
   constructor(...args: ConstructorParameters<typeof Sliceable>) {
     super(...args);
@@ -43,23 +48,23 @@ export abstract class EncryptedContainer extends Sliceable {
     if (start < 0 || start >= this.byteLengthCached!) throw new Error("Invalid slice: start must be within the underlying byte length");
     if (end < 0 || end > this.byteLengthCached!) throw new Error("Invalid slice: end must be within the underlying byte length");
 
-    console.log("-------------SLICE")
-    console.log("start", start);
-    console.log("end", end);
+    this.log("-------------SLICE")
+    this.log("start", start);
+    this.log("end", end);
 
     // Adjust calculations to account for overhead
     const startChunkIdx = this.chunkIdxByEncryptedOffset(start);
     const finalByteChunkIdx = this.chunkIdxByEncryptedOffset(end - 1);
 
-    console.log("startChunkIdx", startChunkIdx);
-    console.log("finalByteChunkIdx", finalByteChunkIdx);
+    this.log("startChunkIdx", startChunkIdx);
+    this.log("finalByteChunkIdx", finalByteChunkIdx);
 
     // Calculate offsets within the chunks
     const startOffset = start % this.encryptedChunkSize;
     const finishOffset = (end-1) % this.encryptedChunkSize;
 
-    console.log("startOffset", startOffset);
-    console.log("finishOffset", finishOffset);
+    this.log("startOffset", startOffset);
+    this.log("finishOffset", finishOffset);
 
     const chunksToStore = finalByteChunkIdx - startChunkIdx + 1;
 
@@ -69,11 +74,11 @@ export abstract class EncryptedContainer extends Sliceable {
     // console.log("encryptedData", encryptedData);
 
     for (let chunkIdx = startChunkIdx; chunkIdx <= finalByteChunkIdx; chunkIdx++) {
-        console.log(">position before", position);
+        this.log(">position before", position);
         const encryptedChunk = await this.encryptChunk(chunkIdx);
         encryptedData.set(encryptedChunk, position);
         position += encryptedChunk.length;
-        console.log(">position after", position);
+        this.log(">position after", position);
     }
 
     const firstChunkStartIdx = startChunkIdx * this.encryptedChunkSize;
