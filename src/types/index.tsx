@@ -1,9 +1,16 @@
+import { AESEncryptedContainer } from "@/helpers/aes";
+import { DataItem } from "@/helpers/dataitemmod";
+import { PlacementBlob } from "@/helpers/placementBlob";
+
 export interface FileMetadata {
     name: string;
     size: number;
     path: string;
     chunkHashes: string[];
     rollingSha384: string;
+    dataItem: DataItem;
+    encryptedDataItem: DataItem;
+    aesContainer: AESEncryptedContainer;
   }
   
   export interface Placement {
@@ -14,6 +21,8 @@ export interface FileMetadata {
     status: 'created' | 'transferring' | 'verifying' | 'completed' | 'error';
     progress: number;
     rsaKeyPair: CryptoKeyPair;
+    placementBlob: PlacementBlob;
+    chunks?: { [chunkIndex: number]: string };
   }
   
   export interface StorageAssignment {

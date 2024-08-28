@@ -24,6 +24,7 @@ export type SlicePart = [SliceLength, (
     | (() => Promise<Uint8Array>)
     | ((start: number, end: number) => Uint8Array)
     | ((start: number, end: number) => Promise<Uint8Array>)
+    | Sliceable
 )];
 export type SliceParts = SlicePart[];
 
@@ -74,6 +75,8 @@ export abstract class Sliceable {
               result.push(bytes.slice(sliceStart, sliceEnd));
             } else if (bytes instanceof File) {
               result.push(await readFileChunk(bytes, sliceStart, sliceEnd));
+            } else if (bytes instanceof Sliceable) {
+              result.push(await bytes.slice(sliceStart, sliceEnd));
             } else {
               throw new Error('Invalid type for bytes');
             }

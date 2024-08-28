@@ -1,5 +1,5 @@
 import init, { Hasher, HashType, RsaEncryptor } from '../../wasm/pkg/wasm_helpers.js';
-import { bufferToHex, hexToBuffer } from './buf.js';
+import { bufferToHex, hexToBuffer, stringToBuffer } from './buf.js';
 
 export { Hasher, HashType };
 
@@ -18,12 +18,24 @@ export async function sha384(data: Uint8Array): Promise<Uint8Array> {
     return new Uint8Array(hashBuffer);
 }
 
-export async function sha256hex(data: Uint8Array): Promise<string> {
-    return bufferToHex(await sha256(data));
+export async function sha256hex(data: Uint8Array|string): Promise<string> {
+    let dataToHash: Uint8Array;
+    if (typeof data === 'string') {
+        dataToHash = stringToBuffer(data);
+    } else {
+        dataToHash = data;
+    }
+    return bufferToHex(await sha256(dataToHash));
 }
 
-export async function sha384hex(data: Uint8Array): Promise<string> {
-    return bufferToHex(await sha384(data));
+export async function sha384hex(data: Uint8Array|string): Promise<string> {
+    let dataToHash: Uint8Array;
+    if (typeof data === 'string') {
+        dataToHash = stringToBuffer(data);
+    } else {
+        dataToHash = data;
+    }
+    return bufferToHex(await sha384(dataToHash));
 }
 
 export async function run() {

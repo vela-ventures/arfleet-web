@@ -16,6 +16,9 @@ import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
 import { Sliceable, SliceParts } from '../helpers/slice';
 import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from '@/helpers/aes';
+import { createFolder } from '@/helpers/folder';
+import { PlacementBlob } from '@/helpers/placementBlob';
+import {produce} from 'immer';
 
 const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -105,6 +108,13 @@ class PlacementQueues {
       queue.poke();
     }
   }
+
+  add(placement: Placement) {
+    if (this.queues[placement.id]) {
+      return;
+    }
+    this.queues[placement.id] = new PlacementQueue(placement);
+  }
 }
 
 export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -138,23 +148,23 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }
 
   const runExp = async () => {
-    const rsaKeyPair = await generateRSAKeyPair();
-    console.log('rsaKeyPair', rsaKeyPair);
-    const files = [ createRandomFile("Hello, world!"), createRandomFile("ABC"), createRandomFile("1234567890") ];
-    // const folder = await createFolder();
-    const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-    const salt = createSalt();
-    if (!masterKey) throw new Error('Master key not found');
-    const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
-    const iv = createSalt(AES_IV_BYTE_LENGTH);
-    const aes = new AESEncryptedContainer(dataItem, salt, secretKey, iv);
-    const encryptedDataItem = await createDataItemWithAESContainer(aes, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-    console.log('aes', aes);
-    const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
-    console.log('container', container);
+    // const rsaKeyPair = await generateRSAKeyPair();
+    // console.log('rsaKeyPair', rsaKeyPair);
+    // const files = [ createRandomFile("Hello, world!"), createRandomFile("ABC"), createRandomFile("1234567890") ];
+    // // const folder = await createFolder();
+    // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+    // const salt = createSalt();
+    // if (!masterKey) throw new Error('Master key not found');
+    // const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
+    // const iv = createSalt(AES_IV_BYTE_LENGTH);
+    // const aes = new AESEncryptedContainer(dataItem, salt, secretKey, iv);
+    // const encryptedDataItem = await createDataItemWithAESContainer(aes, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+    // console.log('aes', aes);
+    // const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
+    // console.log('container', container);
 
-    const obj = container;
-    obj.downloadAsFile("test.obj");
+    // const obj = container;
+    // obj.downloadAsFile("test.obj");
     // await obj.downloadAsFile("test.obj");
 
     // for(let i = 0; i < 2000; i++) {
@@ -252,11 +262,20 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   }, []);
 
-  const updatePlacementProgress = useCallback((placementId: string, progress: number) => {
-    setAssignments(prev => prev.map(a => ({
-      ...a,
-      placements: a.placements.map(p => p.id === placementId ? { ...p, progress } : p)
-    })));
+  const updatePlacementProgress = useCallback((placementId: string, progress: number, chunkIndex: number, chunkHashHex: string) => {
+    setAssignments(produce(draft => {
+      for (const assignment of draft) {
+        const placement = assignment.placements.find(p => p.id === placementId);
+        if (placement) {
+          placement.progress = progress;
+          if (!placement.chunks) {
+            placement.chunks = {};
+          }
+          placement.chunks[chunkIndex] = chunkHashHex;
+          break;
+        }
+      }
+    }));
   }, []);
 
   const updateAssignmentProgress = useCallback((assignmentId: string) => {
@@ -312,7 +331,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ assignmentId: placement.assignmentId }),
+        body: JSON.stringify({ placementId: placement.id }),
       });
 
       if (!response.ok) {
@@ -330,31 +349,29 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   transferChunksRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
     console.log(`Starting chunk transfer for placement ${placement.id}`);
-    let totalChunks = assignment.files.reduce((sum, file) => sum + file.chunkHashes.length, 0);
+    // let totalChunks = assignment.files.reduce((sum, file) => sum + file.chunkHashes.length, 0);
     let uploadedChunks = 0;
 
-    for (const file of assignment.files) {
-      const rawFile = assignment.rawFiles.find(rf => rf.name === file.name);
-      if (!rawFile) {
-        console.error(`Raw file not found for ${file.name}`);
-        continue;
-      }
+    const placementBlob = placement.placementBlob;
+    console.log('placement', placement)
+    console.log('placementBlob', placementBlob)
+    const placementBlobLength = await placementBlob.getByteLength();
+    const chunkCount = await placementBlob.getChunkCount();
 
-      console.log(`Uploading chunks for file ${file.name}`);
-      for (let chunkIndex = 0; chunkIndex < file.chunkHashes.length; chunkIndex++) {
-        const start = chunkIndex * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, rawFile.size);
-        const chunk = await readFileChunk(rawFile, start, end);
-        
-        try {
-          await uploadChunk(placement, file, chunk, chunkIndex);
-          uploadedChunks++;
-          updatePlacementProgress(placement.id, (uploadedChunks / totalChunks) * 100);
-          console.log(`Uploaded chunk ${chunkIndex + 1}/${file.chunkHashes.length} for file ${file.name}`);
-        } catch (error) {
-          console.error(`Error uploading chunk ${chunkIndex} for file ${file.name}:`, error);
-          return 'error';
-        }
+    console.log(`Uploading chunks for placement ${placement.id}`);
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, placementBlobLength);
+      const chunk = await placementBlob.slice(start, end);
+      
+      try {
+        const chunkHashHex = await uploadChunk(placement, chunk, chunkIndex);
+        uploadedChunks++;
+        updatePlacementProgress(placement.id, (uploadedChunks / chunkCount) * 100, chunkIndex, chunkHashHex);
+        console.log(`Uploaded chunk ${chunkIndex + 1}/${chunkCount} for placement ${placement.id}`);
+      } catch (error) {
+        console.error(`Error uploading chunk ${chunkIndex} for placement ${placement.id}:`, error);
+        return 'error';
       }
     }
 
@@ -362,16 +379,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return 'verifying';
   };
 
-  const uploadChunk = async (placement: Placement, file: FileMetadata, chunk: Uint8Array, chunkIndex: number) => {
+  const uploadChunk = async (placement: Placement, chunk: Uint8Array, chunkIndex: number) => {
+    const chunkHashHex = await sha256hex(chunk);
+
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
-      'X-Assignment-Id': placement.assignmentId,
       'X-Placement-Id': placement.id,
-      'X-File-Path': Buffer.from(file.path).toString('base64'),
-      'X-File-Name': Buffer.from(file.name).toString('base64'),
       'X-Chunk-Index': chunkIndex.toString(),
-      'X-Total-Chunks': file.chunkHashes.length.toString(),
-      'X-Chunk-Hash': file.chunkHashes[chunkIndex],
+      'X-Chunk-Hash': chunkHashHex,
     });
 
     const response = await fetch(`${placement.provider}/upload`, {
@@ -383,26 +398,19 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
+    return chunkHashHex;
   };
 
   verifyStorageRef.current = async (placement: Placement, assignment: StorageAssignment) => {
     const metadata = {
-      files: assignment.files.reduce((acc, file) => {
-        acc[file.name] = {
-          name: file.name,
-          size: file.size,
-          path: file.path,
-          chunks: file.chunkHashes,
-        };
-        return acc;
-      }, {} as Record<string, any>),
+      placementId: placement.id,
+      chunks: placement.chunks || {},
     };
 
     const response = await fetch(`${placement.provider}/verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Assignment-Id': placement.assignmentId,
         'X-Placement-Id': placement.id,
       },
       body: JSON.stringify(metadata),
@@ -412,7 +420,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    updatePlacementStatus(placement.id, 'completed');
+    const result = await response.json();
+    if (result.status === 'success') {
+      updatePlacementStatus(placement.id, 'completed');
+    } else {
+      updatePlacementStatus(placement.id, 'error');
+      console.error('Verification failed:', result.message);
+    }
   };
 
   const processPlacementQueue = useCallback(async () => {
@@ -482,11 +496,30 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // create encrypted container
       const salt = createSalt();
       if (!masterKey) throw new Error('Master key not found');
-      const encContainer: AESEncryptedContainer = {
+      const iv = createSalt(AES_IV_BYTE_LENGTH);
+      const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
+      const aesContainer: AESEncryptedContainer = new AESEncryptedContainer(
         dataItem,
         salt,
-        fileKey: await encKeyFromMasterKeyAndSalt(masterKey, salt)
-      }
+        secretKey,
+        iv
+      );
+
+      const encryptedDataItem = await createDataItemWithAESContainer(aesContainer, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+
+      // const folder = await createFolder();
+      // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+      // if (!masterKey) throw new Error('Master key not found');
+      // const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
+      // const iv = createSalt(AES_IV_BYTE_LENGTH);
+      // const aes = new AESEncryptedContainer(dataItem, salt, secretKey, iv);
+      // const encryptedDataItem = await createDataItemWithAESContainer(aes, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+      // console.log('aes', aes);
+      // const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
+      // console.log('container', container);
+  
+      // const obj = container;
+      // obj.downloadAsFile("test.obj");
 
       updatedFiles.push({
         ...file,
@@ -494,30 +527,49 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         rollingSha384: bufferToHex(fileRollingSha384),
         dataItem,
         dataItemPrepareToSign,
-        dataItemSignature,
-        encContainer,
+        aesContainer,
+        encryptedDataItem,
       });
 
       const dataItemBin = await dataItem?.exportBinaryHeader();
       console.log({dataItemBin})
     }
 
+    const folder = await createFolder(updatedFiles);
+
+
     const assignmentHash = await sha256hex(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
     const placements = await Promise.all(PROVIDERS.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
+
+      const rsaContainer = new RSAContainer(rsaKeyPair, folder);
+      console.log('container', rsaContainer);
+
+      const placementBlob = new PlacementBlob(rsaContainer);
+
       return {
-        id: `${assignmentHash}-${provider}`,
+        id: await sha256hex(`${assignmentHash}-${provider}-${Date.now()}`),
         assignmentId: assignmentHash,
+        assignment,
         provider,
         status: 'created' as const,
         progress: 0,
         rsaKeyPair,
+        rsaContainer,
+        placementBlob
       };
     }));
 
-    setAssignments(prev => prev.map(a => 
-      a.id === assignment.id ? { ...a, files: updatedFiles, id: assignmentHash, status: 'uploading', placements, progress: 0 } : a
-    ));
+    setAssignments(produce(draft => {
+      const assignmentToUpdate = draft.find(a => a.id === assignment.id);
+      if (assignmentToUpdate) {
+        assignmentToUpdate.files = updatedFiles;
+        assignmentToUpdate.id = assignmentHash;
+        assignmentToUpdate.status = 'uploading';
+        assignmentToUpdate.placements = placements;
+        assignmentToUpdate.progress = 0;
+      }
+    }));
 
     placementQueueRef.current.push(...placements);
 
@@ -533,8 +585,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log(`Chunk hashes:`, file.chunkHashes);
       console.log(`Rolling SHA-384:`, file.rollingSha384);
       console.log(`Data item:`, file.dataItem);
-      console.log(`Prepare to sign:`, file.dataItemPrepareToSign);
-      console.log(`Signature:`, file.dataItemSignature);
       console.log('---');
     });
   }; // end processAssignment

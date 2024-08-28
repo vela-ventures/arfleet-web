@@ -90,22 +90,22 @@ export class DataItem extends Sliceable {
       //
     }
 
-    async getByteLength(): Promise<number> {
-      if (this.cachedDataItemLength) return this.cachedDataItemLength;
+    // async getByteLength(): Promise<number> {
+    //   if (this.cachedDataItemLength) return this.cachedDataItemLength;
 
-      const _target = this.target ? b64UrlToBuffer(this.target) : null;
-      const target_length = 1 + (_target?.byteLength ?? 0);
-      const _anchor = this.anchor ? b64UrlToBuffer(this.anchor) : null;
-      const anchor_length = 1 + (_anchor?.byteLength ?? 0);
-      const _tags = (this.tags?.length ?? 0) > 0 ? serializeTags(this.tags) : null;
-      const tags_length = 16 + (_tags ? _tags.byteLength : 0);
-      const _owner = b64UrlToBuffer(this.owner);
-      const owner_length = _owner.byteLength;
+    //   const _target = this.target ? b64UrlToBuffer(this.target) : null;
+    //   const target_length = 1 + (_target?.byteLength ?? 0);
+    //   const _anchor = this.anchor ? b64UrlToBuffer(this.anchor) : null;
+    //   const anchor_length = 1 + (_anchor?.byteLength ?? 0);
+    //   const _tags = (this.tags?.length ?? 0) > 0 ? serializeTags(this.tags) : null;
+    //   const tags_length = 16 + (_tags ? _tags.byteLength : 0);
+    //   const _owner = b64UrlToBuffer(this.owner);
+    //   const owner_length = _owner.byteLength;
 
-      const length = 2 + this.signatureLength + owner_length + target_length + anchor_length + tags_length;
-      this.cachedDataItemLength = length;
-      return length;
-    }
+    //   const length = 2 + this.signatureLength + owner_length + target_length + anchor_length + tags_length;
+    //   this.cachedDataItemLength = length;
+    //   return length;
+    // }
 
     async exportBinaryHeader(signature?: Uint8Array): Promise<Uint8Array> {
       const _target = this.target ? b64UrlToBuffer(this.target) : null;
