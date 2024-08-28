@@ -44,7 +44,7 @@ export class FileMetadata {
     if (file instanceof File) {
       this.name = file.name;
       this.size = file.size;
-      this.path = file.name;
+      this.path = (file as any).path || file.webkitRelativePath || file.name;
       this.chunkHashes = {};
     } else {
       Object.assign(this, file);
@@ -858,7 +858,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // fileMetadata.rollingSha384 = bufferToHex(fileRollingSha384);
       fileMetadata.dataItem = dataItem;
       fileMetadata.aesContainer = aesContainer;
-      fileMetadata.encryptedDataItem = encryptedDataItem;
+      // fileMetadata.encryptedDataItem = encryptedDataItem;
+      fileMetadata.encryptedDataItem = dataItem; // todo: fix!
       updatedFiles.push(fileMetadata);
 
       // const dataItemBin = await dataItem?.exportBinaryHeader();
@@ -931,7 +932,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Create new assignment
     const newAssignment = new StorageAssignment({
       id: assignmentId,
-      files: acceptedFiles.map(file => new FileMetadata(file)),
+      files: acceptedFiles.map(file => {
+        const fullPath = (file as any).path || file.webkitRelativePath || file.name;
+        return new FileMetadata({
+          ...file,
+          path: fullPath
+        });
+      }),
       rawFiles: acceptedFiles,
       status: 'created',
       placements: [],
