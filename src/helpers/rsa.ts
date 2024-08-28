@@ -10,6 +10,8 @@ const RSA_KEY_SIZE = 1024;
 const RSA_ENCRYPTED_CHUNK_SIZE = RSA_KEY_SIZE / 8;
 const RSA_UNDERLYING_CHUNK_SIZE = RSA_ENCRYPTED_CHUNK_SIZE - 1;
 
+const RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE = PLACEMENT_BLOB_CHUNK_SIZE - RSA_ENCRYPTED_CHUNK_SIZE; // take 1 chunk for header // todo
+
 const log = (...args: any[]) => (false) ? console.log('[RSA]', ...args) : null;
 
 export class RSAContainer extends EncryptedContainer {
@@ -50,15 +52,39 @@ export class RSAContainer extends EncryptedContainer {
   async buildParts(): Promise<SliceParts> {
     const parts: SliceParts = [];
 
-    const break_every = PLACEMENT_BLOB_CHUNK_SIZE;
+    // let encryptedLengthLeft = await this.getEncryptedByteLength();
+    let decryptedLengthLeft = await this.inner!.getByteLength();
 
-    // const magicString = "arf::rsa";
-    // parts.push([magicString.length, new TextEncoder().encode(magicString)]);
-    parts.push([8, longTo8ByteArray(await this.inner!.getByteLength())]);
-    parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
+    while(decryptedLengthLeft > 0) {
+      const magicString = "arf::rsa";
+      parts.push([magicString.length, new TextEncoder().encode(magicString)]);
+      parts.push([8, longTo8ByteArray((decryptedLengthLeft >= RSA_UNDERLYING_CHUNK_SIZE) ? RSA_UNDERLYING_CHUNK_SIZE : decryptedLengthLeft)]);
+      parts.push([8, this.zeroes.bind(this, 0, RSA_ENCRYPTED_CHUNK_SIZE - 8 - 8)]);
 
-    return parts;
+      // parts.push([await this.getEncryptedByteLength(), ((start: number, end: number) => {
+      //   return this.newEncryptedSlice(start, end);
+      // }).bind(this, 0, )]);
+
+      decryptedLengthLeft -= RSA_UNDERLYING_CHUNK_SIZE;
+    }
   }
+
+  //   for(let i = 0; i < this.chunkCount; i++) {
+  //   const magicString = "arf::rsa";
+  //   parts.push([magicString.length, new TextEncoder().encode(magicString)]);
+  //   parts.push([8, longTo8ByteArray(await this.inner!.getByteLength())]);
+  //   // parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
+
+  //   return parts;
+  // }
+
+  // async newEncryptedSlice(start: number, end: number): Promise<Uint8Array> {
+  //   return this.inner!.slice(start, end);
+  // }
+
+  // async rsaPassthroughSlice(start: number, end: number): Promise<Uint8Array> {
+  //   return this.inner!.slice(start, end);
+  // }
 
   async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
     this.log('encryptChunk', chunkIdx, this.rsaKeyPair)

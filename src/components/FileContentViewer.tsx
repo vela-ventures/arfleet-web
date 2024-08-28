@@ -13,6 +13,8 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
     return null;
   }
 
+  console.log({selectedFile})
+
   return (
     <div className="p-4 border-t">
       <Tabs defaultValue="files">
@@ -45,8 +47,8 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
               </p>
               <p className="mt-2">Chunk Hashes:</p>
               <ul className="text-xs mt-1">
-                {selectedFile.chunkHashes.map((hash, index) => (
-                  <li key={index}>{hash.slice(0, 16)}...</li>
+                {selectedFile.chunkHashes && Object.entries(selectedFile.chunkHashes).map(([index, hash]) => (
+                  <li key={index}>Chunk {index}: {typeof hash === 'string' ? hash.slice(0, 16) : 'N/A'}...</li>
                 ))}
               </ul>
             </div>

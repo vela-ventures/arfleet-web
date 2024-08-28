@@ -1,11 +1,10 @@
+import { RSAContainer } from "./rsa";
 import { Sliceable, SliceParts } from "./sliceable";
 
-export const PLACEMENT_BLOB_CHUNK_SIZE = 8192;
-
-export class PlacementBlob extends Sliceable {
+export class Passthrough extends RSAContainer {
     inner: Sliceable;
-    constructor(inner: Sliceable) {
-        super();
+    constructor(rsa: CryptoKeyPair, inner: Sliceable) {
+        super(rsa, inner);
         this.inner = inner;
     }
 
@@ -13,9 +12,5 @@ export class PlacementBlob extends Sliceable {
         return [
             [await this.inner.getByteLength(), this.inner.slice.bind(this.inner)]
         ];
-    }
-
-    async getChunkCount() {
-        return Math.ceil(await this.inner.getByteLength() / PLACEMENT_BLOB_CHUNK_SIZE);
     }
 }

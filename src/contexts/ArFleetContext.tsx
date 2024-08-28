@@ -21,6 +21,8 @@ import {produce} from 'immer';
 import { AODB } from '../helpers/aodb';
 import { ARFLEET_VERSION } from '@/helpers/version';
 import { rsaPublicKeyToPem } from '../helpers/rsa';
+import { Passthrough } from '@/helpers/passthrough';
+import { PassthroughAES } from '@/helpers/passthroughAES';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -36,13 +38,17 @@ export class FileMetadata {
   dataItem: DataItem | null;
   encryptedDataItem: DataItem | null;
   aesContainer: AESEncryptedContainer | null;
+  chunkHashes: Record<number, string>;
 
-  constructor(file: File) {
-    this.name = file.name;
-    this.size = file.size;
-    this.path = file.name;
-    // this.chunkHashes = [];
-    // this.rollingSha384 = '';
+  constructor(file: File | FileMetadata) {
+    if (file instanceof File) {
+      this.name = file.name;
+      this.size = file.size;
+      this.path = file.name;
+      this.chunkHashes = {};
+    } else {
+      Object.assign(this, file);
+    }
     this.dataItem = null;
     this.encryptedDataItem = null;
     this.aesContainer = null;
@@ -53,14 +59,14 @@ export class FileMetadata {
       name: this.name,
       size: this.size,
       path: this.path,
-      // chunkHashes: this.chunkHashes,
-      // rollingSha384: this.rollingSha384,
+      chunkHashes: this.chunkHashes,
     };
   }
 
   static unserialize(data: any): FileMetadata {
     const file = new FileMetadata(new File([], data.name));
     Object.assign(file, data);
+    file.chunkHashes = data.chunkHashes || {};
     return file;
   }
 }
@@ -486,11 +492,33 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
             placement.chunks = {};
           }
           placement.chunks[chunkIndex] = chunkHashHex;
+
+          // Update the corresponding file's chunkHashes
+          const fileIndex = assignment.folder?.chunkIdxToFile.get(chunkIndex)?.[0];
+          if (fileIndex !== undefined) {
+            const file = assignment.files[fileIndex];
+            if (file) {
+              if (!file.chunkHashes) {
+                file.chunkHashes = {};
+              }
+              file.chunkHashes[chunkIndex] = chunkHashHex;
+            }
+          }
+
+          // Create a new StorageAssignment instance to ensure we have the serialize method
+          const updatedAssignment = new StorageAssignment({
+            ...assignment,
+            placements: assignment.placements.map(p => new Placement(p)),
+            files: assignment.files.map(f => new FileMetadata(f))
+          });
+
+          // Persist the updated assignment to AODB
+          aodb?.set(`assignment:${assignment.id}`, updatedAssignment.serialize());
           break;
         }
       }
     }));
-  }, []);
+  }, [aodb]);
 
   const updateAssignmentProgress = useCallback((assignmentId: string) => {
     setAssignments(prev => prev.map(a => {
@@ -563,7 +591,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   transferChunksRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
     console.log(`Starting chunk transfer for placement ${placement.id}`);
-    // let totalChunks = assignment.files.reduce((sum, file) => sum + file.chunkHashes.length, 0);
     let uploadedChunks = 0;
 
     const placementBlob = placement.placementBlob;
@@ -571,6 +598,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     console.log('placementBlob', placementBlob)
     const placementBlobLength = await placementBlob.getByteLength();
     const chunkCount = await placementBlob.getChunkCount();
+
+    // Initialize chunks object if it doesn't exist
+    if (!placement.chunks) {
+      placement.chunks = {};
+    }
 
     console.log(`Uploading chunks for placement ${placement.id}`);
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
@@ -587,12 +619,29 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const chunkHashHex = await uploadChunk(placement, chunk, chunkIndex);
         uploadedChunks++;
         updatePlacementProgress(placement.id, (uploadedChunks / chunkCount) * 100, chunkIndex, chunkHashHex);
+        
+        // Store the chunk hash in the placement.chunks object
+        placement.chunks[chunkIndex] = chunkHashHex;
+        
         console.log(`Uploaded chunk ${chunkIndex + 1}/${chunkCount} for placement ${placement.id}`);
       } catch (error) {
         console.error(`Error uploading chunk ${chunkIndex} for placement ${placement.id}:`, error);
         return 'error';
       }
     }
+
+    // Update the placement in the assignments state
+    setAssignments(prev => prev.map(a => {
+      if (a.id === assignment.id) {
+        return {
+          ...a,
+          placements: a.placements.map(p => 
+            p.id === placement.id ? { ...p, chunks: placement.chunks } : p
+          )
+        };
+      }
+      return a;
+    }));
 
     // post-transfer
     const encryptedManifestDataItemId = await assignment.folder!.encryptedManifestDataItem!.getDataItemId();
@@ -643,6 +692,48 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placementId: placement.id,
       chunks: placement.chunks || {},
     };
+    console.log('CHUNKS:', metadata.chunks);
+    console.log('FOLDER:', assignment.folder);
+    
+    const filesAndChunks = [];
+    for (let [idx, [file, inFileChunkIdx]] of assignment.folder!.chunkIdxToFile) {
+      filesAndChunks.push({file, chunk: idx, inFileChunkIdx, hash: metadata.chunks[idx]});
+    }
+    const filesAndChunksGroupByFile = filesAndChunks.reduce<Record<string, {
+      file: FileMetadata,
+      chunks: Array<{chunk: number, inFileChunkIdx: number, hash: string}>
+    }>>((acc, {file, chunk, inFileChunkIdx, hash}) => {
+      if (!acc[file.path]) {
+        acc[file.path] = { file, chunks: [] };
+      }
+      acc[file.path].chunks.push({chunk, inFileChunkIdx, hash});
+      return acc;
+    }, {});
+    
+    // Sort chunks within each file and update FileMetadata with hashes
+    Object.values(filesAndChunksGroupByFile).forEach(({file, chunks}) => {
+      chunks.sort((a, b) => a.inFileChunkIdx - b.inFileChunkIdx);
+      file.chunkHashes = chunks.reduce((acc, c) => {
+        acc[c.inFileChunkIdx] = c.hash;
+        return acc;
+      }, {} as Record<number, string>);
+    });
+
+    // Update the assignment with the new file metadata
+    setAssignments(prev => prev.map(a => {
+      if (a.id === assignment.id) {
+        return {
+          ...a,
+          files: a.files.map(f => {
+            const updatedFile = filesAndChunksGroupByFile[f.path]?.file;
+            return updatedFile || f;
+          })
+        };
+      }
+      return a;
+    }));
+
+    console.log({filesAndChunksGroupByFile})
 
     const response = await fetch(`${placement.provider}/verify`, {
       method: 'POST',
@@ -739,7 +830,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!masterKey) throw new Error('Master key not found');
       const iv = createSalt(AES_IV_BYTE_LENGTH);
       const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
-      const aesContainer: AESEncryptedContainer = new AESEncryptedContainer(
+      const aesContainer: AESEncryptedContainer = new PassthroughAES(
         dataItem,
         salt,
         secretKey,
@@ -782,7 +873,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const placements = await Promise.all(PROVIDERS.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
 
-      const rsaContainer = new RSAContainer(rsaKeyPair, folder);
+      const rsaContainer = new Passthrough(rsaKeyPair, folder);
       console.log('container', rsaContainer);
 
       const placementBlob = new PlacementBlob(rsaContainer);

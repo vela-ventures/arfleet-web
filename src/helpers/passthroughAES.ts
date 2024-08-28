@@ -1,11 +1,10 @@
+import { AESEncryptedContainer } from "./aes";
 import { Sliceable, SliceParts } from "./sliceable";
 
-export const PLACEMENT_BLOB_CHUNK_SIZE = 8192;
-
-export class PlacementBlob extends Sliceable {
+export class PassthroughAES extends AESEncryptedContainer {
     inner: Sliceable;
-    constructor(inner: Sliceable) {
-        super();
+    constructor(inner: Sliceable, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array) {
+        super(inner, salt, secretKey, iv);
         this.inner = inner;
     }
 
@@ -13,9 +12,5 @@ export class PlacementBlob extends Sliceable {
         return [
             [await this.inner.getByteLength(), this.inner.slice.bind(this.inner)]
         ];
-    }
-
-    async getChunkCount() {
-        return Math.ceil(await this.inner.getByteLength() / PLACEMENT_BLOB_CHUNK_SIZE);
     }
 }

@@ -45,6 +45,10 @@ export abstract class Sliceable {
         return this.partsCached = await this.buildParts();
     }
 
+    async zeroes(start: number, end: number): Promise<Uint8Array> {
+      return new Uint8Array(end - start).fill(0);
+    }
+
     async getByteLength(): Promise<number> {
         if (this.byteLengthCached !== null) return this.byteLengthCached;
         const parts = await this.getParts();

@@ -377,6 +377,9 @@ export class DataItem extends Sliceable {
 
       // Data length
       const dataLength = await this.getUnderlyingLength();
+      parts.push([8, longTo8ByteArray(dataLength)]);
+
+      // Data
       parts.push([dataLength, this.sliceUnderlying.bind(this)]);
 
       // Now header
@@ -384,7 +387,7 @@ export class DataItem extends Sliceable {
 
       parts.push([headerTemplate.byteLength, this.sliceHeader.bind(this)]);
 
-      console.log("parts", parts);
+      // console.log("parts", parts);
 
       return parts;
     }
