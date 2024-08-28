@@ -1,4 +1,4 @@
-import { Sliceable, SliceParts } from "./slice";
+import { Sliceable, SliceParts } from "./sliceable";
 
 const CHUNK_SIZE = 8192;
 

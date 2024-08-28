@@ -14,7 +14,7 @@ import { generateRSAKeyPair, keyPairToRsaKey, RSAContainer } from '../helpers/rs
 import { arfleetPrivateHash, createSalt, encKeyFromMasterKeyAndSalt } from '../helpers/encrypt';
 import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
-import { Sliceable, SliceParts } from '../helpers/slice';
+import { Sliceable, SliceParts } from '../helpers/sliceable';
 import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from '@/helpers/aes';
 import { createFolder } from '@/helpers/folder';
 import { PlacementBlob } from '@/helpers/placementBlob';

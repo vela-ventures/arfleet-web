@@ -4,7 +4,7 @@ import { stringToBuffer, concatBuffers, longTo8ByteArray } from "./buf";
 import { sha384 } from "./hash";
 import { deepHash, deepHashChunks, DeepHashPointer } from "./deephashmod";
 import { downloadUint8ArrayAsFile } from "./extra";
-import { Sliceable, SliceParts } from "./slice";
+import { Sliceable, SliceParts } from "./sliceable";
 import { AESEncryptedContainer } from "./aes";
 
 export class DataItem extends Sliceable {

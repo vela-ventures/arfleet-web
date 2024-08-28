@@ -1,5 +1,5 @@
 import { FileMetadata } from "@/types";
-import { Sliceable, SlicePart, SliceParts } from "./slice";
+import { Sliceable, SlicePart, SliceParts } from "./sliceable";
 import { DataItem } from "./dataitemmod";
 
 export class Folder extends Sliceable {

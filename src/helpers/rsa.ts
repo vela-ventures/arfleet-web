@@ -1,28 +1,26 @@
 import { AESEncryptedContainer } from "./aes";
-import { Sliceable, SliceParts } from "./slice";
+import { Sliceable, SliceParts } from "./sliceable.js";
 import init, { Hasher, HashType, RsaEncryptor } from '../../wasm/pkg/wasm_helpers.js';
 import { longTo8ByteArray } from "./buf.js";
+import { EncryptedContainer } from "./encryptedContainer.js";
 
 const RSA_KEY_SIZE = 1024;
-const RSA_EXPONENT = 65537;
 
 const RSA_ENCRYPTED_CHUNK_SIZE = RSA_KEY_SIZE / 8;
 const RSA_UNDERLYING_CHUNK_SIZE = RSA_ENCRYPTED_CHUNK_SIZE - 1;
 
-export class RSAContainer extends Sliceable {
+export class RSAContainer extends EncryptedContainer {
   private rsaKeyPair: CryptoKeyPair;
   private cachedRsaKey: RsaKey | null = null;
   private isInitialized: boolean = false;
-  inner: Sliceable;
-  underlyingByteLength: number;
-  chunkCache: Map<number, Uint8Array>;
 
   constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
     super();
     this.rsaKeyPair = rsaKeyPair;
     this.inner = inner;
-    this.underlyingByteLength = -1;
-    this.chunkCache = new Map<number, Uint8Array>();
+
+    this.underlyingChunkSize = RSA_UNDERLYING_CHUNK_SIZE;
+    this.encryptedChunkSize = RSA_ENCRYPTED_CHUNK_SIZE;
   }
 
   private async initialize() {
@@ -46,52 +44,14 @@ export class RSAContainer extends Sliceable {
   }
 
   async buildParts(): Promise<SliceParts> {
-    this.underlyingByteLength = await this.inner.getByteLength();
-
     const parts: SliceParts = [];
 
     const magicString = "arf::rsa";
     parts.push([magicString.length, new TextEncoder().encode(magicString)]);
-    parts.push([8, longTo8ByteArray(this.underlyingByteLength)]);
+    parts.push([8, longTo8ByteArray(await this.inner!.getByteLength())]);
     parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
 
     return parts;
-  }
-
-  async getEncryptedByteLength(): Promise<number> {
-    const originalLength = this.underlyingByteLength;
-    const fullChunks = Math.floor(originalLength / RSA_UNDERLYING_CHUNK_SIZE) + 1;
-    return fullChunks * RSA_ENCRYPTED_CHUNK_SIZE;
-  }
-
-  async encryptSlice(start: number, end: number): Promise<Uint8Array> {
-    if (start >= end) {
-      throw new Error('Start must be less than end');
-    }
-
-    // Seeking into encrypted data
-    const startChunkIdx = Math.floor(start / RSA_ENCRYPTED_CHUNK_SIZE);
-    const endChunkIdx = Math.ceil(end / RSA_ENCRYPTED_CHUNK_SIZE) - 1;
-
-    console.log('startChunkIdx', startChunkIdx)
-    console.log('endChunkIdx', endChunkIdx)
-
-    let encryptedChunks = new Uint8Array((endChunkIdx - startChunkIdx + 1) * RSA_ENCRYPTED_CHUNK_SIZE);
-    let position = 0;
-
-    for (let chunkIdx = startChunkIdx; chunkIdx <= endChunkIdx; chunkIdx++) {
-      console.log('chunkIdx', chunkIdx)
-      console.log('position', position)
-      const encryptedChunk = await this.encryptChunk(chunkIdx);      
-      
-      // add the encrypted chunk to the encryptedChunks array
-      encryptedChunks.set(encryptedChunk, position);
-      position += encryptedChunk.length;
-    }
-
-    const firstChunkStartIdx = startChunkIdx * RSA_ENCRYPTED_CHUNK_SIZE;
-    const startOffsetDifference = start - firstChunkStartIdx;
-    return encryptedChunks.slice(startOffsetDifference, end - start);
   }
 
   async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
@@ -102,14 +62,19 @@ export class RSAContainer extends Sliceable {
       return this.chunkCache.get(chunkIdx)!;
     }
 
-    const underlyingChunkStart = chunkIdx * RSA_UNDERLYING_CHUNK_SIZE;
-    const underlyingChunkEnd = Math.min((chunkIdx + 1) * RSA_UNDERLYING_CHUNK_SIZE, this.underlyingByteLength);
-    const chunk = await this.inner.slice(underlyingChunkStart, underlyingChunkEnd);
+    const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
+    
+    console.log("RSA.inner byte length", await this.inner!.getByteLength());
 
-    console.log('this.underlyingByteLength', this.underlyingByteLength)
-    console.log('underlyingChunkStart', underlyingChunkStart)
-    console.log('underlyingChunkEnd', underlyingChunkEnd)
-    console.log('chunk', chunk)
+    console.log("RSA chunkIdx", chunkIdx, "/", this.chunkCount);
+
+    console.log("RSA: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
+    const chunk = await this.inner!.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
+
+    console.log("RSA plaintext chunk", chunk);
+
+    console.log('RSA underlyingChunkStart', chunkUnderlyingStart)
+    console.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
 
     const rsaKey = await this.getRsaKey();
     const encryptedChunk = await rsaEncrypt(chunk, rsaKey);
@@ -124,6 +89,8 @@ export class RSAContainer extends Sliceable {
         this.chunkCache.delete(key);
       }
     }
+
+    console.log('RSA encrypted chunk', encryptedChunk)
 
     return encryptedChunk;
   }
