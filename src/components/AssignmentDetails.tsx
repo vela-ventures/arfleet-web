@@ -19,15 +19,21 @@ export default function AssignmentDetails({ assignment }: AssignmentDetailsProps
       <p>Files: {assignment.files.length}</p>
       <div className="mt-2">
         <p>Assignment Progress:</p>
-        <Progress value={assignment.progress} className="mt-2" />
+        <Progress value={assignment.progress} className="mt-2 h-2 bg-gray-200" />
       </div>
 
       <h3 className="text-lg font-semibold mt-6 mb-2">Placements</h3>
       {assignment.placements.map((placement) => (
         <div key={placement.id} className="mb-4">
-          <p>{placement.provider}</p>
-          <p>Status: {placement.status}</p>
-          <Progress value={placement.progress} className="mt-2" />
+          <div className="flex justify-between items-center">
+            <p>{placement.provider}</p>
+            <p className="text-sm text-gray-500">{placement.status}</p>
+          </div>
+          <Progress 
+            value={placement.progress} 
+            className="mt-1 h-1.5 bg-gray-200" 
+            indicatorClassName="bg-blue-500"
+          />
         </div>
       ))}
     </div>

@@ -28,8 +28,22 @@ export default function StorageAssignmentList({
             onClick={() => onSelectAssignment(assignment)}
           >
             <p>Assignment {assignment.id.slice(0, 8)}...</p>
-            <p className="text-sm text-muted-foreground">{assignment.status}</p>
-            <Progress value={assignment.progress} className="mt-2" />
+            <p className="text-sm text-muted-foreground mb-2">{assignment.status}</p>
+            <div className="space-y-0.5">
+              {assignment.placements.slice(0, 3).map((placement) => (
+                <Progress 
+                  key={placement.id}
+                  value={placement.progress} 
+                  className="h-1" 
+                  indicatorClassName={cn(
+                    "transition-all",
+                    placement.status === 'completed' ? 'bg-green-500' :
+                    placement.status === 'in_progress' ? 'bg-blue-500' :
+                    'bg-yellow-500'
+                  )}
+                />
+              ))}
+            </div>
           </li>
         ))}
       </ul>

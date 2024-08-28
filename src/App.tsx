@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom'
-import { Bell, CloudUpload, Home, Package, ShoppingCart, Users, Server } from "lucide-react"
+import { Bell, CloudUpload, Home, Package, ShoppingCart, Users, Server, CogIcon, Globe, FileText, Folder, FolderArchive } from "lucide-react"
 import { Link as RouterLink } from 'react-router-dom'
 import { ConnectButton } from "arweave-wallet-kit"
 import WalletWrapper from './components/WalletWrapper'
@@ -27,7 +27,7 @@ import React from 'react';
 
 // Components for other routes (placeholder)
 const Dashboard = () => <div>Dashboard</div>
-const Orders = () => <div>Orders</div>
+const Settings = () => <div>Settings</div>
 const Products = () => <div>Products</div>
 const Customers = () => <div>Customers</div>
 
@@ -134,8 +134,8 @@ function Header({ theme }) {
               to="/"
               className="mx-[-0.65rem] flex items-center gap-4 rounded-xl bg-muted px-3 py-2 text-foreground hover:text-foreground"
             >
-              <ShoppingCart className="h-5 w-5" />
-              Orders
+              <CogIcon className="h-5 w-5" />
+              Settings
               <Badge className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
                 6
               </Badge>
@@ -238,11 +238,12 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   const links = [
     { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet isGlobalDragActive={isGlobalDragActive} /> },
     { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Dashboard /> },
-    { name: "Dashboard", href: "/dashboard", icon: <Home className="h-4 w-4" />, component: <Dashboard /> },
-    { name: "Orders", href: "/orders", icon: <ShoppingCart className="h-4 w-4" />, component: <Orders /> },
-    { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
-    { name: "Website", href: "/website", icon: <Users className="h-4 w-4" />, component: <Customers /> },
-    { name: "Documentation", href: "/docs", icon: <Users className="h-4 w-4" />, component: <Customers /> },
+    { name: "Files", href: "/files", icon: <FolderArchive className="h-4 w-4" />, component: <Dashboard /> },
+    // { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
+    { name: "Settings", href: "/settings", icon: <CogIcon className="h-4 w-4" />, component: <Settings /> },
+    { type: 'separator' },
+    { name: "Website", href: "/website", icon: <Globe className="h-4 w-4" />, component: <Customers /> },
+    { name: "Documentation", href: "/docs", icon: <FileText className="h-4 w-4" />, component: <Customers /> },
   ];
 
   useEffect(() => {
@@ -318,17 +319,21 @@ function Sidebar({ activeLink, links }) {
         </div>
         <div className="flex-1">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-            {links.map((link) => (
-              <RouterLink
-                key={link.href}
-                to={link.href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary ${
-                  activeLink === link.href ? 'bg-muted' : ''
-                }`}
-              >
-                {link.icon}
-                {link.name}
-              </RouterLink>
+            {links.map((link, index) => (
+              link.type === 'separator' ? (
+                <hr key={`separator-${index}`} className="my-2 border-t border-gray-200 dark:border-gray-700" />
+              ) : (
+                <RouterLink
+                  key={link.href}
+                  to={link.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary ${
+                    activeLink === link.href ? 'bg-muted' : ''
+                  }`}
+                >
+                  {link.icon}
+                  {link.name}
+                </RouterLink>
+              )
             ))}
           </nav>
         </div>
