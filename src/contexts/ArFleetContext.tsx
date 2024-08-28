@@ -257,6 +257,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         status: newStatus
       };
     }));
+
     placementQueueRef.current = placementQueueRef.current.map(p => 
       p.id === placementId ? { ...p, status } : p
     );
