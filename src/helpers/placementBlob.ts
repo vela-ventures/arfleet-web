@@ -1,6 +1,6 @@
 import { Sliceable, SliceParts } from "./sliceable";
 
-const CHUNK_SIZE = 8192;
+export const PLACEMENT_BLOB_CHUNK_SIZE = 8192;
 
 export class PlacementBlob extends Sliceable {
     inner: Sliceable;

@@ -20,6 +20,7 @@ import { PlacementBlob } from '@/helpers/placementBlob';
 import {produce} from 'immer';
 import { AODB } from '../helpers/aodb';
 import { ARFLEET_VERSION } from '@/helpers/version';
+import { rsaPublicKeyToPem } from '../helpers/rsa';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -544,7 +545,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ placementId: placement.id }),
+        body: JSON.stringify({ placementId: placement.id })
       });
 
       if (!response.ok) {
@@ -614,11 +615,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const uploadChunk = async (placement: Placement, chunk: Uint8Array, chunkIndex: number) => {
     const chunkHashHex = await sha256hex(chunk);
 
+    const rsaKey = await placement.rsaContainer!.getRsaKey();
+    const publicKeyPem = rsaPublicKeyToPem(rsaKey.n, rsaKey.e);
+
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
       'X-Placement-Id': placement.id,
       'X-Chunk-Index': chunkIndex.toString(),
       'X-Chunk-Hash': chunkHashHex,
+      'X-RSA-Public-Key': JSON.stringify(publicKeyPem)
     });
 
     const response = await fetch(`${placement.provider}/upload`, {

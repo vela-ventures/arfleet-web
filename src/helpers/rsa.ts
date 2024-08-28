@@ -3,6 +3,7 @@ import { Sliceable, SliceParts } from "./sliceable.js";
 import init, { Hasher, HashType, RsaEncryptor } from '../../wasm/pkg/wasm_helpers.js';
 import { longTo8ByteArray } from "./buf.js";
 import { EncryptedContainer } from "./encryptedContainer.js";
+import { PLACEMENT_BLOB_CHUNK_SIZE } from "./placementBlob.js";
 
 const RSA_KEY_SIZE = 1024;
 
@@ -33,7 +34,7 @@ export class RSAContainer extends EncryptedContainer {
     }
   }
 
-  private async getRsaKey(): Promise<RsaKey> {
+  async getRsaKey(): Promise<RsaKey> {
     await this.initialize();
     if (!this.cachedRsaKey) {
       try {
@@ -49,8 +50,10 @@ export class RSAContainer extends EncryptedContainer {
   async buildParts(): Promise<SliceParts> {
     const parts: SliceParts = [];
 
-    const magicString = "arf::rsa";
-    parts.push([magicString.length, new TextEncoder().encode(magicString)]);
+    const break_every = PLACEMENT_BLOB_CHUNK_SIZE;
+
+    // const magicString = "arf::rsa";
+    // parts.push([magicString.length, new TextEncoder().encode(magicString)]);
     parts.push([8, longTo8ByteArray(await this.inner!.getByteLength())]);
     parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
 
@@ -392,4 +395,21 @@ export async function runRsaPerformanceTest() {
       console.log(`Encryption: ${result.encryptionOps} ops in ${result.encryptionTime.toFixed(2)}ms (${(result.encryptionOps / result.encryptionTime * 1000).toFixed(2)} ops/s)`);
       console.log(`Decryption: ${result.decryptionOps} ops in ${result.decryptionTime.toFixed(2)}ms (${(result.decryptionOps / result.decryptionTime * 1000).toFixed(2)} ops/s)`);
   }
+}
+
+export function rsaPublicKeyToPem(n: Uint8Array, e: Uint8Array): string {
+  const rsaPublicKey = {
+    modulus: Buffer.from(n).toString('base64'),
+    exponent: Buffer.from(e).toString('base64')
+  };
+
+  const asn1 = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA${rsaPublicKey.modulus}AgMBAAE=`;
+  const der = Buffer.from(asn1, 'base64');
+  const pem = [
+    '-----BEGIN PUBLIC KEY-----',
+    ...der.toString('base64').match(/.{1,64}/g)!,
+    '-----END PUBLIC KEY-----'
+  ].join('\n');
+
+  return pem;
 }
