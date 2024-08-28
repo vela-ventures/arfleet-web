@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { Buffer } from 'buffer';
 import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/hash';
-import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithAESContainer } from '../helpers/dataitemmod';
+import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithSliceable, DataItemFactory } from '../helpers/dataitemmod';
 import { DeepHashPointer } from '../helpers/deephashmod';
-import { concatBuffers } from '../helpers/buf';
-import { b64UrlToBuffer } from '../helpers/encodeUtils';
+import { concatBuffers, stringToBuffer } from '../helpers/buf';
+import { b64UrlToBuffer, bufferTob64Url } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
 // import { experiment } from '../helpers/rsa';
@@ -15,22 +15,23 @@ import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
 import { Sliceable, SliceParts } from '../helpers/sliceable';
 import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from '@/helpers/aes';
-import { createFolder } from '@/helpers/folder';
+import { createFolder, Folder } from '@/helpers/folder';
 import { PlacementBlob } from '@/helpers/placementBlob';
 import {produce} from 'immer';
 import { AODB } from '../helpers/aodb';
+import { ARFLEET_VERSION } from '@/helpers/version';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
 
-class FileMetadata {
+export class FileMetadata {
   name: string;
   size: number;
   path: string;
-  chunkHashes: string[];
-  rollingSha384: string;
+  // chunkHashes: string[];
+  // rollingSha384: string;
   dataItem: DataItem | null;
   encryptedDataItem: DataItem | null;
   aesContainer: AESEncryptedContainer | null;
@@ -39,8 +40,8 @@ class FileMetadata {
     this.name = file.name;
     this.size = file.size;
     this.path = file.name;
-    this.chunkHashes = [];
-    this.rollingSha384 = '';
+    // this.chunkHashes = [];
+    // this.rollingSha384 = '';
     this.dataItem = null;
     this.encryptedDataItem = null;
     this.aesContainer = null;
@@ -51,8 +52,8 @@ class FileMetadata {
       name: this.name,
       size: this.size,
       path: this.path,
-      chunkHashes: this.chunkHashes,
-      rollingSha384: this.rollingSha384,
+      // chunkHashes: this.chunkHashes,
+      // rollingSha384: this.rollingSha384,
     };
   }
 
@@ -63,17 +64,30 @@ class FileMetadata {
   }
 }
 
-class Placement {
+export class Placement {
   id: string;
   assignmentId: string;
   provider: string;
   status: 'created' | 'transferring' | 'verifying' | 'completed' | 'error';
   progress: number;
-  rsaKeyPair: CryptoKeyPair;
-  placementBlob: PlacementBlob;
+  rsaKeyPair: CryptoKeyPair | null;
+  placementBlob: PlacementBlob | null;
   chunks?: { [chunkIndex: number]: string };
+  assignment: StorageAssignment | null;
+  rsaContainer: RSAContainer | null;
 
   constructor(data: Partial<Placement>) {
+    // initial values
+    this.id = '';
+    this.assignmentId = '';
+    this.provider = '';
+    this.status = 'created';
+    this.progress = 0;
+    this.rsaKeyPair = null;
+    this.placementBlob = null;
+    this.assignment = null;
+    this.rsaContainer = null;
+
     Object.assign(this, data);
   }
 
@@ -93,15 +107,31 @@ class Placement {
   }
 }
 
-class StorageAssignment {
+export class StorageAssignment {
   id: string;
   files: FileMetadata[];
   rawFiles: File[];
   status: 'created' | 'chunking' | 'uploading' | 'completed' | 'error';
   placements: Placement[];
   progress: number;
+  dataItemFactory: DataItemFactory | null;
+  folder: Folder | null;
+  encryptedManifestDataItemId: string | null;
+  walletSigner: WalletSigner | null;
 
   constructor(data: Partial<StorageAssignment>) {
+    // initial values
+    this.id = '';
+    this.files = [];
+    this.rawFiles = [];
+    this.status = 'created';
+    this.placements = [];
+    this.progress = 0;
+    this.dataItemFactory = null;
+    this.folder = null;
+    this.encryptedManifestDataItemId = data.encryptedManifestDataItemId || null;
+    this.walletSigner = null;
+
     Object.assign(this, data);
     this.files = (this.files || []).map(f => f instanceof FileMetadata ? f : new FileMetadata(f));
     this.placements = (this.placements || []).map(p => p instanceof Placement ? p : new Placement(p));
@@ -120,6 +150,7 @@ class StorageAssignment {
           return null;
         }
       }).filter(Boolean),
+      encryptedManifestDataItemId: this.encryptedManifestDataItemId,
       progress: this.progress,
     };
   }
@@ -228,6 +259,14 @@ class PlacementQueues {
   }
 }
 
+// Wrapper because you can't store a function in react state
+class WalletSigner {
+  signer: Function;
+  constructor(signer: Function) {
+    this.signer = signer;
+  }
+}
+
 export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [assignments, setAssignments] = useState<StorageAssignment[]>([]);
   const [selectedAssignment, setSelectedAssignment] = useState<StorageAssignment | null>(null);
@@ -244,6 +283,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [arConnected, setArConnected] = useState(false);
   const [wallet, setWallet] = useState<any | null>(null);
+  const [walletSigner, setWalletSigner] = useState<WalletSigner | null>(null);
   const [signer, setSigner] = useState<DataItemSigner | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
@@ -340,14 +380,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       let signer_ = createDataItemSigner(wallet_);
       setSigner(signer_);
       setWallet(wallet_);
-
+      console.log("wallet", wallet_);
+      console.log("signMessage", wallet_.signMessage);
+      setWalletSigner(new WalletSigner(wallet_.signMessage.bind(wallet_)));
       try {
         const address_ = await wallet_.getActiveAddress();
         setAddress(address_);
 
         const pubKeyB64_ = await wallet_.getActivePublicKey();
         setPubKeyB64(pubKeyB64_);
-        // console.log('pubKeyB64', pubKeyB64_);
         const pubKey_ = b64UrlToBuffer(pubKeyB64_);
         setPubKey(pubKey_);
         // console.log('pubKey', pubKey_);
@@ -552,6 +593,20 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
 
+    // post-transfer
+    const encryptedManifestDataItemId = await assignment.folder!.encryptedManifestDataItem!.getDataItemId();
+    
+    // Create a new assignment object with the updated property
+    const updatedAssignment = new StorageAssignment({
+      ...assignment,
+      encryptedManifestDataItemId: encryptedManifestDataItemId
+    });
+
+    // Update the assignments state with the new assignment object
+    setAssignments(prev => prev.map(a => 
+      a.id === updatedAssignment.id ? updatedAssignment : a
+    ));
+
     console.log(`All chunks uploaded for placement ${placement.id}`);
     return 'verifying';
   };
@@ -636,39 +691,43 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     for (let i = 0; i < assignment.files.length; i++) {
       const file = assignment.files[i];
       const rawFile = assignment.rawFiles[i];
-      const chunkHashes: string[] = [];
-      const rollingHash = await makeHasher(HashType.SHA384);
+      // const chunkHashes: string[] = [];
+      // const rollingHash = await makeHasher(HashType.SHA384);
 
-      const totalChunks = Math.ceil(rawFile.size / CHUNK_SIZE);
-      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-        const start = chunkIndex * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, rawFile.size);
-        const chunk = await readFileChunk(rawFile, start, end);
-        const chunkHash = await sha256hex(chunk);
-        chunkHashes.push(chunkHash);
+      // const totalChunks = Math.ceil(rawFile.size / CHUNK_SIZE);
+      // for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      //   const start = chunkIndex * CHUNK_SIZE;
+      //   const end = Math.min(start + CHUNK_SIZE, rawFile.size);
+      //   const chunk = await readFileChunk(rawFile, start, end);
+      //   const chunkHash = await sha256hex(chunk);
+      //   chunkHashes.push(chunkHash);
         
-        // Update rolling hash with the current chunk
-        await rollingHash.update(chunk);
-      }
+      //   // Update rolling hash with the current chunk
+      //   await rollingHash.update(chunk);
+      // }
 
-      const fileRollingSha384 = await rollingHash.finalize();
-      const pointer: DeepHashPointer = {
-        value: fileRollingSha384,
-        role: 'file',
-        dataLength: rawFile.size,
-      };
+      // const fileRollingSha384 = await rollingHash.finalize();
+      // const pointer: DeepHashPointer = {
+      //   value: fileRollingSha384,
+      //   role: 'file',
+      //   dataLength: rawFile.size,
+      // };
 
       // create data item
       if (!address) throw new Error('Address not found');
-      const dataItem = await createDataItemWithDataHash(pointer, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-      const dataItemPrepareToSign = await dataItem?.prepareToSign();
+      console.log('assignment.dataItemFactory', assignment.dataItemFactory);
+      const dataItem = await assignment.dataItemFactory!.createDataItemWithRawFile(rawFile, /*tags*/[
+        {name: "ArFleet-DataItem-Type", value: "File"},
+      ], assignment.walletSigner);
+      // const dataItemPrepareToSign = await dataItem.prepareToSign();
 
-      // sign data item
-      dataItem.signature = await wallet.signMessage(dataItemPrepareToSign, {
-        hashAlgorithm: 'SHA-384',
-      })
+      // // sign data item
+      // dataItem.signature = await wallet.signMessage(dataItemPrepareToSign, {
+      //   hashAlgorithm: 'SHA-384',
+      // })
+      // console.log('dataItem', dataItem);
 
-      dataItem.rawFile = rawFile;
+      // dataItem.rawFile = rawFile;
 
       // create encrypted container
       const salt = createSalt();
@@ -682,7 +741,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         iv
       );
 
-      const encryptedDataItem = await createDataItemWithAESContainer(aesContainer, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
+      const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
 
       // const folder = await createFolder();
       // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
@@ -698,24 +757,23 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // const obj = container;
       // obj.downloadAsFile("test.obj");
 
-      updatedFiles.push({
-        ...file,
-        chunkHashes,
-        rollingSha384: bufferToHex(fileRollingSha384),
-        dataItem,
-        dataItemPrepareToSign,
-        aesContainer,
-        encryptedDataItem,
-      });
+      const fileMetadata = new FileMetadata(rawFile);
+      // fileMetadata.chunkHashes = chunkHashes;
+      // fileMetadata.rollingSha384 = bufferToHex(fileRollingSha384);
+      fileMetadata.dataItem = dataItem;
+      fileMetadata.aesContainer = aesContainer;
+      fileMetadata.encryptedDataItem = encryptedDataItem;
+      updatedFiles.push(fileMetadata);
 
-      const dataItemBin = await dataItem?.exportBinaryHeader();
-      console.log({dataItemBin})
+      // const dataItemBin = await dataItem?.exportBinaryHeader();
+      // console.log({dataItemBin})
     }
 
-    const folder = await createFolder(updatedFiles);
+    if (!masterKey) throw new Error('Master key not found');
+    const folder = await createFolder(updatedFiles, assignment.dataItemFactory!, walletSigner, masterKey);
 
-
-    const assignmentHash = await sha256hex(new TextEncoder().encode(updatedFiles.map(f => f.chunkHashes.join('')).join('')));
+    const tmpId: string = (new Date()).getTime().toString();
+    const assignmentHash = await sha256hex(new TextEncoder().encode(tmpId));
     const placements = await Promise.all(PROVIDERS.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
 
@@ -730,10 +788,10 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assignment: assignment,
         provider,
         status: 'created' as const,
-      progress: 0,
+        progress: 0,
         rsaKeyPair,
         rsaContainer,
-        placementBlob
+        placementBlob,
       });
     }));
 
@@ -742,6 +800,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (assignmentToUpdate) {
         assignmentToUpdate.files = updatedFiles;
         assignmentToUpdate.id = assignmentHash;
+        assignmentToUpdate.folder = folder;
         assignmentToUpdate.status = 'uploading';
         assignmentToUpdate.placements = placements;
         assignmentToUpdate.progress = 0;
@@ -760,20 +819,37 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log(`Size: ${file.size}`);
       console.log(`Path: ${file.path}`);
       console.log(`Chunk hashes:`, file.chunkHashes);
-      console.log(`Rolling SHA-384:`, file.rollingSha384);
+      // console.log(`Rolling SHA-384:`, file.rollingSha384);
       console.log(`Data item:`, file.dataItem);
       console.log('---');
     });
   }; // end processAssignment
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    /// WARNING: This is a callback, it captures the state at the beginning.
+    // If you need to use state, add it to dependencies at the end.
+    const assignmentId = bufferTob64Url(await sha256(stringToBuffer(Date.now().toString())));
+
+    if (!walletSigner) throw new Error('Wallet signer not found');
+
+    // Create new assignment
     const newAssignment = new StorageAssignment({
-      id: Date.now().toString(),
+      id: assignmentId,
       files: acceptedFiles.map(file => new FileMetadata(file)),
       rawFiles: acceptedFiles,
       status: 'created',
       placements: [],
-      progress: 0
+      progress: 0,
+      walletSigner: walletSigner,
+      dataItemFactory: new DataItemFactory(
+        /* owner */pubKeyB64!,
+        /* target */bufferTob64Url(await sha256(stringToBuffer("empty-target"))), 
+        /* root anchor */bufferTob64Url(await sha256(stringToBuffer(assignmentId))),
+        /* tags */[
+          {name: "ArFleet-Client", value: "Web"},
+          {name: "ArFleet-Version", value: ARFLEET_VERSION},
+        ],
+      ),
     });
     setAssignments(prev => {
       const updatedAssignments = [...prev, newAssignment];
@@ -783,7 +859,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return updatedAssignments;
     });
     setAssignmentQueue(prev => [...prev, newAssignment.id]);
-  }, [aodb]);
+  }, [aodb, pubKeyB64, walletSigner]);
 
   useEffect(() => {
     const processNextAssignment = async () => {

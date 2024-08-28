@@ -226,7 +226,12 @@ function Header({ theme }) {
   )
 }
 
-function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }) {
+function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
+  setActiveLink: (link: string) => void;
+  activeLink: string;
+  theme: string;
+  isGlobalDragActive: boolean;
+}) {
   const location = useLocation()
   const { arConnected } = useArFleet();
 

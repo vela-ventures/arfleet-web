@@ -11,6 +11,12 @@ interface MyArFleetProps {
   isGlobalDragActive: boolean;
 }
 
+declare global {
+  interface Window {
+    showDirectoryPicker(): Promise<FileSystemDirectoryHandle>;
+  }
+}
+
 async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Promise<File[]> {
   const files: File[] = [];
   for await (const entry of dirHandle.values()) {
