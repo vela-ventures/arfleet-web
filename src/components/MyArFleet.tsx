@@ -7,6 +7,10 @@ import AssignmentDetails from './AssignmentDetails';
 import FileContentViewer from './FileContentViewer';
 import { useArFleet } from '../contexts/ArFleetContext';
 
+interface MyArFleetProps {
+  isGlobalDragActive: boolean;
+}
+
 async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Promise<File[]> {
   const files: File[] = [];
   for await (const entry of dirHandle.values()) {
@@ -19,13 +23,15 @@ async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Prom
   return files;
 }
 
-export default function MyArFleet() {
+export default function MyArFleet({ isGlobalDragActive }: MyArFleetProps) {
   const { assignments, selectedAssignment, setSelectedAssignment, onDrop, devMode } = useArFleet();
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+  const { getRootProps, getInputProps, isDragActive: isLocalDragActive } = useDropzone({
     onDrop,
     noClick: assignments.length > 0 // Disable click when assignments exist
   });
+
+  const isDragActive = isLocalDragActive || isGlobalDragActive;
 
   const handleFileSelect = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -54,7 +60,7 @@ export default function MyArFleet() {
     return (
       <div className={cn(
         "absolute inset-0 z-50 flex items-center justify-center p-8 h-[calc(100vh-63px)] w-full",
-        overlayMode ? "top-0 bg-background/80 border-2 border-dashed border-primary" : "top-0 border-2 border-transparent"
+        overlayMode ? "top-0 bg-background/80 border-2 border-primary" : "top-0 border-2 border-transparent"
       )}>
         <div className={cn(
           "flex flex-col border-2 rounded-lg p-[15%]",
@@ -96,22 +102,20 @@ export default function MyArFleet() {
       
       <h1 className="text-2xl font-bold p-4">My ArFleet</h1>
 
-      {assignments.length === 0 && !isDragActive ? (
+      {assignments.length === 0 ? (
         dragAndDropOverlay(false)
       ) : (
-        assignments.length > 0 ? (
-          <div className="flex-1 flex">
-            <StorageAssignmentList
-              assignments={assignments}
-              selectedAssignment={selectedAssignment}
-              onSelectAssignment={setSelectedAssignment}
-            />
-            <div className="flex-1 flex flex-col">
-              <AssignmentDetails assignment={selectedAssignment} />
-              <FileContentViewer assignment={selectedAssignment} />
-            </div>
+        <div className="flex-1 flex">
+          <StorageAssignmentList
+            assignments={assignments}
+            selectedAssignment={selectedAssignment}
+            onSelectAssignment={setSelectedAssignment}
+          />
+          <div className="flex-1 flex flex-col">
+            <AssignmentDetails assignment={selectedAssignment} />
+            <FileContentViewer assignment={selectedAssignment} />
           </div>
-        ) : null
+        </div>
       )}
       {isDragActive && dragAndDropOverlay(true)}
     </div>

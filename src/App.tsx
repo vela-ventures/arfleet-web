@@ -23,6 +23,7 @@ import { Moon, Sun } from "lucide-react"
 import {useDropzone} from 'react-dropzone';
 import { ArFleetProvider, useArFleet } from './contexts/ArFleetContext';
 import WallOfLines from './components/WallOfLines'
+import React from 'react';
 
 // Components for other routes (placeholder)
 const Dashboard = () => <div>Dashboard</div>
@@ -36,31 +37,57 @@ declare global {
   var prevConnected: boolean | null
 }
 
-const links = [
-  { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet /> },
-  { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Dashboard /> },
-  { name: "Dashboard", href: "/dashboard", icon: <Home className="h-4 w-4" />, component: <Dashboard /> },
-  { name: "Orders", href: "/orders", icon: <ShoppingCart className="h-4 w-4" />, component: <Orders /> },
-  { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
-  { name: "Website", href: "/website", icon: <Users className="h-4 w-4" />, component: <Customers /> },
-  { name: "Documentation", href: "/docs", icon: <Users className="h-4 w-4" />, component: <Customers /> },
-]
-
 function App() {
   const [activeLink, setActiveLink] = useState("/")
   const [theme] = useLocalStorageState('theme', {
     defaultValue: 'light'
   })
+  const [isGlobalDragActive, setIsGlobalDragActive] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      setIsGlobalDragActive(true);
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.clientX === 0 && e.clientY === 0) {
+        setIsGlobalDragActive(false);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setIsGlobalDragActive(false);
+    };
+
+    document.addEventListener('dragenter', handleDragEnter);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('drop', handleDrop);
+
+    return () => {
+      document.removeEventListener('dragenter', handleDragEnter);
+      document.removeEventListener('dragleave', handleDragLeave);
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
   return (
     <WalletWrapper>
       <ArFleetProvider>
         <Router>
-          <AppContent setActiveLink={setActiveLink} activeLink={activeLink} theme={theme} />
+          <AppContent setActiveLink={setActiveLink} activeLink={activeLink} theme={theme} isGlobalDragActive={isGlobalDragActive} />
         </Router>
       </ArFleetProvider>
     </WalletWrapper>
@@ -199,9 +226,19 @@ function Header({ theme }) {
   )
 }
 
-function AppContent({ setActiveLink, activeLink, theme }) {
+function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }) {
   const location = useLocation()
   const { arConnected } = useArFleet();
+
+  const links = [
+    { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet isGlobalDragActive={isGlobalDragActive} /> },
+    { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Dashboard /> },
+    { name: "Dashboard", href: "/dashboard", icon: <Home className="h-4 w-4" />, component: <Dashboard /> },
+    { name: "Orders", href: "/orders", icon: <ShoppingCart className="h-4 w-4" />, component: <Orders /> },
+    { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
+    { name: "Website", href: "/website", icon: <Users className="h-4 w-4" />, component: <Customers /> },
+    { name: "Documentation", href: "/docs", icon: <Users className="h-4 w-4" />, component: <Customers /> },
+  ];
 
   useEffect(() => {
     setActiveLink(location.pathname)
@@ -209,7 +246,7 @@ function AppContent({ setActiveLink, activeLink, theme }) {
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
-      <Sidebar activeLink={activeLink} />
+      <Sidebar activeLink={activeLink} links={links} />
       <div className="flex flex-col h-screen overflow-hidden">
         <Header theme={theme} />
 
@@ -217,7 +254,11 @@ function AppContent({ setActiveLink, activeLink, theme }) {
           {arConnected ? (
             <Routes>
               {links.map((link) => (
-                <Route key={link.href} path={link.href} element={link.component} />
+                <Route 
+                  key={link.href} 
+                  path={link.href} 
+                  element={link.component}
+                />
               ))}
             </Routes>
           ) : (
@@ -260,7 +301,7 @@ function AppContent({ setActiveLink, activeLink, theme }) {
   )
 }
 
-function Sidebar({ activeLink }) {
+function Sidebar({ activeLink, links }) {
   return (
     <div className="hidden border-r bg-muted/40 md:block">
       <div className="flex h-full max-h-screen flex-col gap-2">
