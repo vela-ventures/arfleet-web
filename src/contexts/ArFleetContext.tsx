@@ -19,6 +19,7 @@ import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from '@/helpers/aes';
 import { createFolder } from '@/helpers/folder';
 import { PlacementBlob } from '@/helpers/placementBlob';
 import {produce} from 'immer';
+import { AODB } from '../helpers/aodb';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -36,6 +37,9 @@ interface ArFleetContextType {
   signer: DataItemSigner | null;
   arConnected: boolean;
   connectWallet: () => Promise<void>;
+  fetchFromArweave: (placementId: string) => Promise<any>;
+  devMode: boolean;
+  resetAODB: () => Promise<void>;
 }
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
@@ -139,46 +143,58 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [pubKey, setPubKey] = useState<ArrayBuffer | null>(null);
   const [masterKey, setMasterKey] = useState<Uint8Array | null>(null);
 
-  const createRandomFile = (text: string) => {
-    const data = new Uint8Array(text.length * 1000000);
-    for (let i = 0; i < 1000000; i++) {
-      data.set(new TextEncoder().encode(text), i * text.length);
+  const [aodb, setAodb] = useState<AODB | null>(null);
+
+  const [devMode] = useState<boolean>(true); // or false, depending on your preference
+
+  const resetAODB = useCallback(async () => {
+    if (aodb) {
+      await aodb.reset();
+      setAssignments([]);
+      console.log('AODB reset successfully');
     }
-    return data;
-  }
+  }, [aodb]);
 
-  const runExp = async () => {
-    // const rsaKeyPair = await generateRSAKeyPair();
-    // console.log('rsaKeyPair', rsaKeyPair);
-    // const files = [ createRandomFile("Hello, world!"), createRandomFile("ABC"), createRandomFile("1234567890") ];
-    // // const folder = await createFolder();
-    // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-    // const salt = createSalt();
-    // if (!masterKey) throw new Error('Master key not found');
-    // const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
-    // const iv = createSalt(AES_IV_BYTE_LENGTH);
-    // const aes = new AESEncryptedContainer(dataItem, salt, secretKey, iv);
-    // const encryptedDataItem = await createDataItemWithAESContainer(aes, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-    // console.log('aes', aes);
-    // const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
-    // console.log('container', container);
+  useEffect(() => {
+    const initAODB = async () => {
+      const aodbInstance = new AODB();
+      await aodbInstance.init();
+      setAodb(aodbInstance);
 
-    // const obj = container;
-    // obj.downloadAsFile("test.obj");
-    // await obj.downloadAsFile("test.obj");
+      // Load stored placements
+      const allPlacementsString = aodbInstance.get('allPlacements', '[]');
+      const allPlacements = JSON.parse(allPlacementsString || '[]');
+      
+      const loadedPlacements = await Promise.all(allPlacements.map(async (placementId: string) => {
+        const placementString = aodbInstance.get(`placement:${placementId}`, '');
+        return placementString ? JSON.parse(placementString) : null;
+      }));
 
-    // for(let i = 0; i < 2000; i++) {
-    //   const ord = await obj.slice(i, i + 1);
-    //   const ord_extracted = ord[0];
-    //   const chr = String.fromCharCode(ord_extracted);
-    //   console.log(i, ">ord_extracted<", ord_extracted, ">chr<", chr);
+      const validPlacements = loadedPlacements.filter(Boolean);
+      setAssignments(prev => {
+        const updatedAssignments = [...prev];
+        validPlacements.forEach(placement => {
+          const assignmentIndex = updatedAssignments.findIndex(a => a.id === placement.assignmentId);
+          if (assignmentIndex !== -1) {
+            updatedAssignments[assignmentIndex].placements.push(placement);
+          } else {
+            // If the assignment doesn't exist, create a new one
+            updatedAssignments.push({
+              id: placement.assignmentId,
+              files: [], // We might need to store file information separately
+              rawFiles: [],
+              status: 'loaded',
+              placements: [placement],
+              progress: placement.progress,
+            });
+          }
+        });
+        return updatedAssignments;
+      });
+    };
 
-    //   if (typeof ord_extracted !== 'number') {
-    //     break;
-    //   }
-    // }
-    // console.log(await obj.getByteLength());
-  }
+    initAODB();
+  }, []);
 
   const connectWallet = useCallback(async () => {
     if (globalThis.arweaveWallet) {
@@ -211,14 +227,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  useEffect(() => {
-    if (!arConnected) return;
-    console.log('experiment')
-    if (globalThis.ranExp) return;
-    globalThis.ranExp = true;
-    runExp();
-    run();
-  }, [arConnected]);
+  // useEffect(() => {
+  //   if (!arConnected) return;
+  //   // console.log('experiment')
+  //   // if (globalThis.ranExp) return;
+  //   // globalThis.ranExp = true;
+  //   // runExp();
+  //   // run();
+  // }, [arConnected]);
 
   useEffect(() => {
     connectWallet();
@@ -247,21 +263,37 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [connectWallet]);
 
   const updatePlacementStatus = useCallback((placementId: string, status: Placement['status']) => {
-    setAssignments(prev => prev.map(a => {
-      const updatedPlacements = a.placements.map(p => p.id === placementId ? { ...p, status } : p);
-      const allCompleted = updatedPlacements.every(p => p.status === 'completed');
-      const newStatus = allCompleted ? 'completed' : a.status;
-      return {
-        ...a,
-        placements: updatedPlacements,
-        status: newStatus
-      };
-    }));
+    setAssignments(prev => {
+      const newAssignments = prev.map(a => {
+        const updatedPlacements = a.placements.map(p => {
+          if (p.id === placementId) {
+            const updatedPlacement = { ...p, status };
+            // Update AODB
+            aodb?.set(`placement:${placementId}`, JSON.stringify(updatedPlacement));
+            return updatedPlacement;
+          }
+          return p;
+        });
+        const allCompleted = updatedPlacements.every(p => p.status === 'completed');
+        const newStatus = allCompleted ? 'completed' : a.status;
+        return {
+          ...a,
+          placements: updatedPlacements,
+          status: newStatus
+        };
+      });
+
+      // Update allPlacements in AODB
+      const allPlacements = newAssignments.flatMap(a => a.placements.map(p => p.id));
+      aodb?.set('allPlacements', JSON.stringify(allPlacements));
+
+      return newAssignments;
+    });
 
     placementQueueRef.current = placementQueueRef.current.map(p => 
       p.id === placementId ? { ...p, status } : p
     );
-  }, []);
+  }, [aodb]);
 
   const updatePlacementProgress = useCallback((placementId: string, progress: number, chunkIndex: number, chunkHashHex: string) => {
     setAssignments(produce(draft => {
@@ -559,7 +591,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         assignment,
         provider,
         status: 'created' as const,
-        progress: 0,
+      progress: 0,
         rsaKeyPair,
         rsaContainer,
         placementBlob
@@ -636,6 +668,18 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     processPlacementQueue();
   }, [processPlacementQueue, assignments]);
 
+  const fetchFromArweave = useCallback(async (placementId: string) => {
+    const placement = assignments.flatMap(a => a.placements).find(p => p.id === placementId);
+    if (!placement || placement.status !== 'completed') {
+      throw new Error('Placement not completed or not found');
+    }
+
+    // Implement the logic to fetch data from Arweave using the placement information
+    // This is a placeholder and needs to be implemented based on your Arweave setup
+    const arweaveData = await fetchDataFromArweave(placement);
+    return arweaveData;
+  }, [assignments]);
+
   const value = {
     assignments,
     selectedAssignment,
@@ -647,6 +691,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     signer,
     arConnected,
     connectWallet,
+    fetchFromArweave,
+    devMode,
+    resetAODB,
   };
 
   return <ArFleetContext.Provider value={value}>{children}</ArFleetContext.Provider>;

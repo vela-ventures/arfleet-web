@@ -14,7 +14,8 @@ export class AODB {
         // grab from local storage
         const data = localStorage.getItem("aodb");
         if (data) {
-            this.data = new Map(JSON.parse(data));
+            const parsedData = JSON.parse(data);
+            this.data = new Map(Object.entries(parsedData));
         }
     }
 
@@ -34,6 +35,12 @@ export class AODB {
     async set(key: string, value: string) {
         if (!this.initialized) throw new Error("AODB not initialized");
         this.data.set(key, value);
-        localStorage.setItem("aodb", JSON.stringify(this.data));
+        localStorage.setItem("aodb", JSON.stringify(Object.fromEntries(this.data)));
+    }
+
+    async reset() {
+        this.data.clear();
+        localStorage.removeItem("aodb");
+        console.log("AODB reset");
     }
 }

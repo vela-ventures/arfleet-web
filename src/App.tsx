@@ -68,7 +68,7 @@ function App() {
 }
 
 function Header({ theme }) {
-  const { arConnected } = useArFleet();
+  const { arConnected, devMode, resetAODB } = useArFleet();
   
   const buttonStyle = theme !== 'dark' 
     ? { accent: "rgb(220, 220, 250)", className: "text-gray-700" }
@@ -172,6 +172,12 @@ function Header({ theme }) {
       />
 
       <ThemeToggle />
+
+      {devMode && (
+        <Button onClick={resetAODB} variant="outline" size="sm">
+          Reset AODB
+        </Button>
+      )}
 
       {/* <DropdownMenu>
         <DropdownMenuTrigger asChild>

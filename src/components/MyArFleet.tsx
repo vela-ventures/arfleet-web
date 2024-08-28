@@ -20,7 +20,7 @@ async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Prom
 }
 
 export default function MyArFleet() {
-  const { assignments, selectedAssignment, setSelectedAssignment, onDrop } = useArFleet();
+  const { assignments, selectedAssignment, setSelectedAssignment, onDrop, devMode } = useArFleet();
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
