@@ -17,6 +17,8 @@ export class AODB {
             const parsedData = JSON.parse(data);
             this.data = new Map(Object.entries(parsedData));
         }
+
+        this.logContents();
     }
 
     has(key: string) {
@@ -24,7 +26,7 @@ export class AODB {
         return this.data.has(key);
     }
 
-    get(key: string, defaultValue: string) {
+    get(key: string, defaultValue: any = undefined): any {
         if (!this.initialized) throw new Error("AODB not initialized");
         if (this.data.has(key)) {
             return this.data.get(key);
@@ -32,15 +34,22 @@ export class AODB {
         return defaultValue;
     }
 
-    async set(key: string, value: string) {
+    async set(key: string, value: any) {
         if (!this.initialized) throw new Error("AODB not initialized");
-        this.data.set(key, value);
+        this.data.set(key, JSON.stringify(value));
         localStorage.setItem("aodb", JSON.stringify(Object.fromEntries(this.data)));
     }
-
+ 
     async reset() {
         this.data.clear();
         localStorage.removeItem("aodb");
         console.log("AODB reset");
+    }
+
+    logContents() {
+        console.log('AODB contents:');
+        for (const [key, value] of this.data) {
+            console.log(`${key}: ${value}`);
+        }
     }
 }

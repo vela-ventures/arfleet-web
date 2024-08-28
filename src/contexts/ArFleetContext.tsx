@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { StorageAssignment, FileMetadata, Placement } from '../types';
 import { Buffer } from 'buffer';
 import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/hash';
 import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithAESContainer } from '../helpers/dataitemmod';
@@ -25,6 +24,114 @@ const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
+
+class FileMetadata {
+  name: string;
+  size: number;
+  path: string;
+  chunkHashes: string[];
+  rollingSha384: string;
+  dataItem: DataItem | null;
+  encryptedDataItem: DataItem | null;
+  aesContainer: AESEncryptedContainer | null;
+
+  constructor(file: File) {
+    this.name = file.name;
+    this.size = file.size;
+    this.path = file.name;
+    this.chunkHashes = [];
+    this.rollingSha384 = '';
+    this.dataItem = null;
+    this.encryptedDataItem = null;
+    this.aesContainer = null;
+  }
+
+  serialize() {
+    return {
+      name: this.name,
+      size: this.size,
+      path: this.path,
+      chunkHashes: this.chunkHashes,
+      rollingSha384: this.rollingSha384,
+    };
+  }
+
+  static unserialize(data: any): FileMetadata {
+    const file = new FileMetadata(new File([], data.name));
+    Object.assign(file, data);
+    return file;
+  }
+}
+
+class Placement {
+  id: string;
+  assignmentId: string;
+  provider: string;
+  status: 'created' | 'transferring' | 'verifying' | 'completed' | 'error';
+  progress: number;
+  rsaKeyPair: CryptoKeyPair;
+  placementBlob: PlacementBlob;
+  chunks?: { [chunkIndex: number]: string };
+
+  constructor(data: Partial<Placement>) {
+    Object.assign(this, data);
+  }
+
+  serialize() {
+    return {
+      id: this.id,
+      assignmentId: this.assignmentId,
+      provider: this.provider,
+      status: this.status,
+      progress: this.progress,
+      chunks: this.chunks,
+    };
+  }
+
+  static unserialize(data: any): Placement {
+    return new Placement(data);
+  }
+}
+
+class StorageAssignment {
+  id: string;
+  files: FileMetadata[];
+  rawFiles: File[];
+  status: 'created' | 'chunking' | 'uploading' | 'completed' | 'error';
+  placements: Placement[];
+  progress: number;
+
+  constructor(data: Partial<StorageAssignment>) {
+    Object.assign(this, data);
+    this.files = (this.files || []).map(f => f instanceof FileMetadata ? f : new FileMetadata(f));
+    this.placements = (this.placements || []).map(p => p instanceof Placement ? p : new Placement(p));
+  }
+
+  serialize() {
+    return {
+      id: this.id,
+      files: this.files.map(file => file.serialize()),
+      status: this.status,
+      placements: this.placements.map(placement => {
+        if (placement instanceof Placement) {
+          return placement.serialize();
+        } else {
+          console.error('Invalid placement:', placement);
+          return null;
+        }
+      }).filter(Boolean),
+      progress: this.progress,
+    };
+  }
+
+  static unserialize(data: any): StorageAssignment {
+    return new StorageAssignment({
+      ...data,
+      files: data.files.map(FileMetadata.unserialize),
+      placements: data.placements.map(Placement.unserialize),
+    });
+  }
+}
 
 interface ArFleetContextType {
   assignments: StorageAssignment[];
@@ -161,36 +268,67 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await aodbInstance.init();
       setAodb(aodbInstance);
 
-      // Load stored placements
-      const allPlacementsString = aodbInstance.get('allPlacements', '[]');
-      const allPlacements = JSON.parse(allPlacementsString || '[]');
-      
-      const loadedPlacements = await Promise.all(allPlacements.map(async (placementId: string) => {
-        const placementString = aodbInstance.get(`placement:${placementId}`, '');
-        return placementString ? JSON.parse(placementString) : null;
-      }));
+      const allAssignmentIds = aodbInstance.get('allAssignments');
+      let parsedAssignmentIds: string[];
 
-      const validPlacements = loadedPlacements.filter(Boolean);
-      setAssignments(prev => {
-        const updatedAssignments = [...prev];
-        validPlacements.forEach(placement => {
-          const assignmentIndex = updatedAssignments.findIndex(a => a.id === placement.assignmentId);
-          if (assignmentIndex !== -1) {
-            updatedAssignments[assignmentIndex].placements.push(placement);
-          } else {
-            // If the assignment doesn't exist, create a new one
-            updatedAssignments.push({
-              id: placement.assignmentId,
-              files: [], // We might need to store file information separately
-              rawFiles: [],
-              status: 'loaded',
-              placements: [placement],
-              progress: placement.progress,
-            });
+      if (typeof allAssignmentIds === 'string') {
+        try {
+          parsedAssignmentIds = JSON.parse(allAssignmentIds);
+        } catch (error) {
+          console.error('Failed to parse allAssignments:', error);
+          parsedAssignmentIds = [];
+        }
+      } else if (Array.isArray(allAssignmentIds)) {
+        parsedAssignmentIds = allAssignmentIds;
+      } else {
+        console.error('Invalid allAssignments data:', allAssignmentIds);
+        parsedAssignmentIds = [];
+      }
+
+      if (Array.isArray(parsedAssignmentIds)) {
+        const loadedAssignments = await Promise.all(parsedAssignmentIds.map(async (assignmentId: string) => {
+          const assignmentData = aodbInstance.get(`assignment:${assignmentId}`);
+          if (assignmentData) {
+            let parsedAssignmentData;
+            if (typeof assignmentData === 'string') {
+              try {
+                parsedAssignmentData = JSON.parse(assignmentData);
+              } catch (error) {
+                console.error(`Failed to parse assignment data for ${assignmentId}:`, error);
+                return null;
+              }
+            } else {
+              parsedAssignmentData = assignmentData;
+            }
+            
+            const assignment = StorageAssignment.unserialize(parsedAssignmentData);
+            assignment.placements = await Promise.all(assignment.placements.map(async (placementData) => {
+              const placementFullData = aodbInstance.get(`placement:${placementData.id}`);
+              let parsedPlacementData;
+              if (typeof placementFullData === 'string') {
+                try {
+                  parsedPlacementData = JSON.parse(placementFullData);
+                } catch (error) {
+                  console.error(`Failed to parse placement data for ${placementData.id}:`, error);
+                  return new Placement(placementData);
+                }
+              } else {
+                parsedPlacementData = placementFullData;
+              }
+              return new Placement(parsedPlacementData || placementData);
+            }));
+            return assignment;
           }
-        });
-        return updatedAssignments;
-      });
+          return null;
+        }));
+
+        const validAssignments = loadedAssignments.filter(Boolean) as StorageAssignment[];
+        setAssignments(validAssignments);
+      } else {
+        console.error('parsedAssignmentIds is not an array:', parsedAssignmentIds);
+      }
+
+      aodbInstance.logContents();
     };
 
     initAODB();
@@ -267,31 +405,32 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const newAssignments = prev.map(a => {
         const updatedPlacements = a.placements.map(p => {
           if (p.id === placementId) {
-            const updatedPlacement = { ...p, status };
-            // Update AODB
-            aodb?.set(`placement:${placementId}`, JSON.stringify(updatedPlacement));
+            const updatedPlacement = new Placement({ ...p, status });
+            aodb?.set(`placement:${placementId}`, updatedPlacement.serialize());
             return updatedPlacement;
           }
-          return p;
+          return p instanceof Placement ? p : new Placement(p);
         });
         const allCompleted = updatedPlacements.every(p => p.status === 'completed');
         const newStatus = allCompleted ? 'completed' : a.status;
-        return {
+        
+        const updatedAssignment = new StorageAssignment({
           ...a,
           placements: updatedPlacements,
           status: newStatus
-        };
+        });
+        aodb?.set(`assignment:${a.id}`, updatedAssignment.serialize());
+        return updatedAssignment;
       });
 
-      // Update allPlacements in AODB
-      const allPlacements = newAssignments.flatMap(a => a.placements.map(p => p.id));
-      aodb?.set('allPlacements', JSON.stringify(allPlacements));
+      const allAssignmentIds = newAssignments.map(a => a.id);
+      aodb?.set('allAssignments', allAssignmentIds);
 
       return newAssignments;
     });
 
     placementQueueRef.current = placementQueueRef.current.map(p => 
-      p.id === placementId ? { ...p, status } : p
+      p.id === placementId ? new Placement({ ...p, status }) : p
     );
   }, [aodb]);
 
@@ -585,17 +724,17 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const placementBlob = new PlacementBlob(rsaContainer);
 
-      return {
+      return new Placement({
         id: await sha256hex(`${assignmentHash}-${provider}-${Date.now()}`),
         assignmentId: assignmentHash,
-        assignment,
+        assignment: assignment,
         provider,
         status: 'created' as const,
       progress: 0,
         rsaKeyPair,
         rsaContainer,
         placementBlob
-      };
+      });
     }));
 
     setAssignments(produce(draft => {
@@ -628,25 +767,23 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }; // end processAssignment
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const newAssignment: StorageAssignment = {
+    const newAssignment = new StorageAssignment({
       id: Date.now().toString(),
-      files: acceptedFiles.map(file => ({
-        name: file.name,
-        size: file.size,
-        path: file.name,
-        chunkHashes: [],
-        rollingSha384: '',
-        dataItem: null,
-        dataItemPrepareToSign: null,
-      })),
+      files: acceptedFiles.map(file => new FileMetadata(file)),
       rawFiles: acceptedFiles,
       status: 'created',
       placements: [],
-      progress: 0,
-    };
-    setAssignments(prev => [...prev, newAssignment]);
+      progress: 0
+    });
+    setAssignments(prev => {
+      const updatedAssignments = [...prev, newAssignment];
+      aodb?.set(`assignment:${newAssignment.id}`, newAssignment.serialize());
+      const allAssignmentIds = updatedAssignments.map(a => a.id);
+      aodb?.set('allAssignments', allAssignmentIds);
+      return updatedAssignments;
+    });
     setAssignmentQueue(prev => [...prev, newAssignment.id]);
-  }, []);
+  }, [aodb]);
 
   useEffect(() => {
     const processNextAssignment = async () => {
