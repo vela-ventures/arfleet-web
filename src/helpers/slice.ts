@@ -44,9 +44,13 @@ export abstract class Sliceable {
     }
 
     async slice(start: number, end: number): Promise<Uint8Array> {
-        if (start < 0 || end < 0 || start > end) throw new Error("Invalid slice");
+        if (start < 0 || end < 0 || start > end) throw new Error(`Invalid slice: start=${start}, end=${end}`);
 
         const parts = await this.getParts();
+
+        if (this.byteLengthCached === null) throw new Error('Byte length not cached yet, but we just built parts');
+        if (start >= this.byteLengthCached) throw new Error(`Invalid slice idx: start=${start} is greater than or equal to byte length=${this.byteLengthCached}`);
+        if (end > this.byteLengthCached) throw new Error(`Invalid slice idx: end=${end} is greater than byte length=${this.byteLengthCached}`);
 
         let result: Uint8Array[] = [];
         let currentPosition = 0;

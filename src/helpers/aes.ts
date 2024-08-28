@@ -1,5 +1,4 @@
 import { longTo8ByteArray } from "./buf";
-import { DataItem } from "./dataitemmod";
 import { Sliceable, SliceParts } from "./slice";
 
 export const AES_IV_BYTE_LENGTH = 16;
@@ -16,24 +15,76 @@ type ChunkCacheEntry = {
 }
 
 export class AESEncryptedContainer extends Sliceable {
-    dataItem: DataItem;
+    inner: Sliceable;
     salt: Uint8Array;
     secretKey: Uint8Array;
     iv: Uint8Array;
-    underlyingByteLength: number;
     chunkCache: Map<number, ChunkCacheEntry>;
+    chunkCount: number | null; 
   
-    constructor(dataItem: DataItem, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array) {
+    constructor(inner: Sliceable, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array) {
       super();
-      this.dataItem = dataItem;
+      this.inner = inner;
       this.salt = salt;
       this.secretKey = secretKey;
       this.iv = iv;
       this.chunkCache = new Map<number, ChunkCacheEntry>();
-      this.underlyingByteLength = 0;
+      this.chunkCount = null;
       if (iv.length !== AES_IV_BYTE_LENGTH) {
         throw new Error(`Invalid IV length: ${iv.length}, expected ${AES_IV_BYTE_LENGTH}`);
       }
+    }
+
+    ChunkIdxByEncryptedOffset(offset: number): number {
+        return Math.floor(offset / AES_CHUNK_SIZE);
+    }
+
+    ChunkIdxByUnderlyingOffset(offset: number): number {
+        return Math.floor(offset / UNDERLYING_CHUNK_SIZE);
+    }
+
+    async encryptSlice(start: number, end: number): Promise<Uint8Array> {
+        if (start >= end) throw new Error("Invalid slice: start must be less than end");
+        if (start < 0 || start >= this.byteLengthCached!) throw new Error("Invalid slice: start must be within the underlying byte length");
+        if (end < 0 || end > this.byteLengthCached!) throw new Error("Invalid slice: end must be within the underlying byte length");
+
+        console.log("-------------SLICE")
+        console.log("start", start);
+        console.log("end", end);
+
+        // Adjust calculations to account for AES overhead
+        const startChunkIdx = this.ChunkIdxByEncryptedOffset(start);
+        const finalByteChunkIdx = this.ChunkIdxByEncryptedOffset(end - 1);
+
+        console.log("startChunkIdx", startChunkIdx);
+        console.log("finalByteChunkIdx", finalByteChunkIdx);
+
+        // Calculate offsets within the chunks
+        const startOffset = start % AES_CHUNK_SIZE;
+        const finishOffset = (end-1) % AES_CHUNK_SIZE;
+
+        console.log("startOffset", startOffset);
+        console.log("finishOffset", finishOffset);
+
+        const chunksToStore = finalByteChunkIdx - startChunkIdx + 1;
+
+        let encryptedData = new Uint8Array(chunksToStore * AES_CHUNK_SIZE);
+        let position = 0;
+
+        // console.log("encryptedData", encryptedData);
+
+        for (let chunkIdx = startChunkIdx; chunkIdx <= finalByteChunkIdx; chunkIdx++) {
+            console.log(">position before", position);
+            const encryptedChunk = await this.encryptChunk(chunkIdx);
+            encryptedData.set(encryptedChunk, position);
+            position += encryptedChunk.length;
+            console.log(">position after", position);
+        }
+
+        const firstChunkStartIdx = startChunkIdx * AES_CHUNK_SIZE;
+        const startOffsetDifference = start - firstChunkStartIdx;
+        const sliceLength = end - start;
+        return encryptedData.slice(startOffsetDifference, startOffsetDifference + sliceLength);
     }
 
     async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
@@ -41,29 +92,44 @@ export class AESEncryptedContainer extends Sliceable {
             return this.chunkCache.get(chunkIdx)!.plainChunk;
         }
 
-        if (chunkIdx > 0 && !this.chunkCache.has(chunkIdx - 1)) {
-            await this.encryptChunk(chunkIdx - 1);
+        console.log("AES: encrypting chunk", chunkIdx, "(not found in cache)");
+
+        let previousChunk = null;
+        if (chunkIdx > 0) {
+            if (!this.chunkCache.has(chunkIdx - 1)) {
+                await this.encryptChunk(chunkIdx - 1);
+            }
+            previousChunk = this.chunkCache.get(chunkIdx - 1)!.encryptedChunk;
+        } else {
+            previousChunk = new Uint8Array(UNDERLYING_CHUNK_SIZE).fill(0);
         }
 
         const iv = this.iv;
-        const chain = (chunkIdx === 0) ? new Uint8Array(UNDERLYING_CHUNK_SIZE).fill(0) : this.chunkCache.get(chunkIdx - 1)!.encryptedChunk.slice(-UNDERLYING_CHUNK_SIZE);
+        const chain = previousChunk!.slice(-UNDERLYING_CHUNK_SIZE);
+
         // Adjust chunk size to account for AES overhead
-        const chunkStart = chunkIdx * UNDERLYING_CHUNK_SIZE;
-        const chunkEnd = (chunkIdx + 1) * UNDERLYING_CHUNK_SIZE;
-        const chunk = await this.dataItem.slice(chunkStart, chunkEnd);
+        const isLastChunk = chunkIdx === this.chunkCount! - 1;
+        const chunkUnderlyingStart = chunkIdx * UNDERLYING_CHUNK_SIZE;
+        const chunkUnderlyingLength = (isLastChunk) ? (await this.inner.getByteLength() % UNDERLYING_CHUNK_SIZE) : UNDERLYING_CHUNK_SIZE;
+        const chunkUnderlyingEnd = chunkUnderlyingStart + chunkUnderlyingLength;
+
+        console.log("AES.inner byte length", await this.inner.getByteLength());
+
+        console.log("-------------")
+        console.log("isLastChunk", isLastChunk);
+        console.log("chunkIdx", chunkIdx, "/", this.chunkCount);
+
+        console.log("AES: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
+        const chunk = await this.inner.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
+
+        console.log("AES plaintext chunk", chunk);
+
+        // XOR with previous chunk ciphertext
         const chunkXored = new Uint8Array(chunk.length);
         for (let i = 0; i < chunk.length; i++) {
             chunkXored[i] = chunk[i] ^ chain[i];
         }
 
-        console.log("dataItem byte length", await this.dataItem.getByteLength());
-        const totalChunks = Math.ceil((await this.dataItem.getByteLength()) / UNDERLYING_CHUNK_SIZE);
-        const isLastChunk = chunkIdx === totalChunks - 1;
-
-        console.log("-------------")
-        console.log("isLastChunk", isLastChunk);
-        console.log("chunkIdx", chunkIdx, "/", totalChunks);
-        console.log("chunk", chunk);
         const encryptedChunk = await new Uint8Array(await encryptAes(chunkXored, this.secretKey, iv, isLastChunk));
         this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
         
@@ -82,70 +148,14 @@ export class AESEncryptedContainer extends Sliceable {
         return encryptedChunk;
     }
 
-    async encryptSlice(start: number, end: number): Promise<Uint8Array> {
-        if (start >= end) {
-            throw new Error("Invalid slice: start must be less than end");
-        }
-
-        console.log("-------------SLICE")
-        console.log("start", start);
-        console.log("end", end);
-
-        // Adjust calculations to account for AES overhead
-        const startChunkIdx = Math.floor(start / AES_CHUNK_SIZE);
-        const endChunkIdx = Math.ceil(end / AES_CHUNK_SIZE) - 1;
-
-        console.log("startChunkIdx", startChunkIdx);
-        console.log("endChunkIdx", endChunkIdx);
-
-        // Calculate offsets within the chunks
-        const startOffset = start % AES_CHUNK_SIZE;
-        const endOffset = end % AES_CHUNK_SIZE || AES_CHUNK_SIZE;
-
-        console.log("startOffset", startOffset);
-        console.log("endOffset", endOffset);
-
-        let encryptedData = new Uint8Array((endChunkIdx - startChunkIdx + 1) * AES_CHUNK_SIZE);
-        let position = 0;
-
-        // console.log("encryptedData", encryptedData);
-
-        for (let chunkIdx = startChunkIdx; chunkIdx <= endChunkIdx; chunkIdx++) {
-            console.log(">position before", position);
-            const encryptedChunk = await this.encryptChunk(chunkIdx);
-            encryptedData.set(encryptedChunk, position);
-            position += encryptedChunk.length;
-            // const chunkStart = chunkIdx === startChunkIdx ? startOffset : 0;
-            // const chunkEnd = chunkIdx === endChunkIdx ? endOffset + AES_OVERHEAD : encryptedChunk.length;
-            // console.log(">chunkStart", chunkStart);
-            // console.log(">chunkEnd", chunkEnd);
-            
-            // encryptedData.set(encryptedChunk.slice(chunkStart, chunkEnd), position);
-            // position += chunkEnd - chunkStart;
-
-            // console.log(">encryptedData", encryptedData);
-            console.log(">position after", position);
-        }
-
-        const firstChunkStartIdx = startChunkIdx * AES_CHUNK_SIZE;
-        const startOffsetDifference = start - firstChunkStartIdx;
-        return encryptedData.slice(startOffsetDifference, end - start);
-    }
-
     async getEncryptedByteLength(): Promise<number> {
-        const originalLength = await this.dataItem.getByteLength();
-        const fullChunks = Math.floor(originalLength / UNDERLYING_CHUNK_SIZE);
-        const remainingBytes = originalLength % UNDERLYING_CHUNK_SIZE;
-        
-        // Calculate total length: full chunks + last chunk (if any) + AES overhead for each chunk
-        const totalLength = (fullChunks * AES_CHUNK_SIZE) + 
-                            (remainingBytes > 0 ? remainingBytes + AES_OVERHEAD : 0);
-        
-        return totalLength;
+        const originalLength = await this.inner.getByteLength();
+        this.chunkCount = Math.ceil(originalLength / UNDERLYING_CHUNK_SIZE);
+        return this.chunkCount * AES_CHUNK_SIZE;
     }
 
     async buildParts(): Promise<SliceParts> {
-        this.underlyingByteLength = await this.dataItem.getByteLength();
+        this.underlyingByteLength = await this.inner.getByteLength();
 
         const magicString = "arf::enc";
         const parts: SliceParts = [];

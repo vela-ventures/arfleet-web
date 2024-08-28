@@ -237,9 +237,9 @@ export async function rsaEncrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Ar
     throw new Error(`Data is too long: ${data.length} bytes, maximum is ${maxSize} bytes`);
   }
   const paddedData = padRight(data, key.bits / 8);
-  console.log(`Encrypting data (${paddedData.length} bytes): ${bufferToHex(paddedData)}`);
+  console.log(`RSA Encrypting data (${paddedData.length} bytes): ${bufferToHex(paddedData)}`);
   const encrypted = new Uint8Array(encryptor.private_encrypt(paddedData, key.n, key.d));
-  console.log(`Encrypted result (${encrypted.length} bytes): ${bufferToHex(encrypted)}`);
+  console.log(`RSA Encrypted result (${encrypted.length} bytes): ${bufferToHex(encrypted)}`);
   return encrypted;
 }
 
@@ -247,9 +247,9 @@ export async function rsaDecrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Ar
   if (!encryptor) {
       throw new Error("RSA not initialized. Call initRsa() first.");
   }
-  console.log(`Decrypting data (${data.length} bytes): ${bufferToHex(data)}`);
+  console.log(`RSA Decrypting data (${data.length} bytes): ${bufferToHex(data)}`);
   const decrypted = new Uint8Array(encryptor.public_decrypt(data, key.n, key.e));
-  console.log(`Decrypted result (${decrypted.length} bytes): ${bufferToHex(decrypted)}`);
+  console.log(`RSA Decrypted result (${decrypted.length} bytes): ${bufferToHex(decrypted)}`);
   return decrypted;
 }
 
