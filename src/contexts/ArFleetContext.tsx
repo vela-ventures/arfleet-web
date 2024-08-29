@@ -4,7 +4,7 @@ import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/h
 import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithSliceable, DataItemFactory } from '../helpers/dataitemmod';
 import { DeepHashPointer } from '../helpers/deephashmod';
 import { concatBuffers, stringToBuffer } from '../helpers/buf';
-import { b64UrlToBuffer, bufferTob64Url } from '../helpers/encodeUtils';
+import { b64UrlToBuffer, bufferTob64Url, stringToB64Url } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
 // import { experiment } from '../helpers/rsa';
@@ -413,14 +413,17 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  // useEffect(() => {
-  //   if (!arConnected) return;
-  //   // console.log('experiment')
-  //   // if (globalThis.ranExp) return;
-  //   // globalThis.ranExp = true;
-  //   // runExp();
-  //   // run();
-  // }, [arConnected]);
+  useEffect(() => {
+    if (!arConnected) return;
+    console.log('experiment')
+    // if (globalThis.ranExp) return;
+    // globalThis.ranExp = true;
+    // runExp();
+    // run();
+
+    // const data = "hello";
+    // const rsa = new RSAContainer()
+  }, [arConnected]);
 
   useEffect(() => {
     connectWallet();
@@ -494,16 +497,25 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           placement.chunks[chunkIndex] = chunkHashHex;
 
           // Update the corresponding file's chunkHashes
-          const fileIndex = assignment.folder?.chunkIdxToFile.get(chunkIndex)?.[0];
-          if (fileIndex !== undefined) {
-            const file = assignment.files[fileIndex];
-            if (file) {
-              if (!file.chunkHashes) {
-                file.chunkHashes = {};
-              }
-              file.chunkHashes[chunkIndex] = chunkHashHex;
-            }
-          }
+          // const fileMetaData = assignment.folder?.chunkIdxToFile.get(chunkIndex)?.[0];
+          // console.log('fileMetaData', fileMetaData)
+          // if (fileMetaData) {
+          //   console.log('assignment', assignment)
+          //   console.log('assignment.files', assignment.files)
+
+          //   const file = assignment.files.find(f => f.path === fileMetaData.path);
+          //   console.log('file', file)
+          //   if (file) {
+          //     if (!file.chunkHashes) {
+          //       file.chunkHashes = {};
+          //     }
+          //     file.chunkHashes[chunkIndex] = chunkHashHex;
+          //   }
+          //   console.log('********')
+          //   console.log('chunkHashes', file?.chunkHashes);
+          //   console.log('chunkIdxToFile', assignment.folder?.chunkIdxToFile);
+          // }
+
 
           // Create a new StorageAssignment instance to ensure we have the serialize method
           const updatedAssignment = new StorageAssignment({
@@ -664,15 +676,22 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const uploadChunk = async (placement: Placement, chunk: Uint8Array, chunkIndex: number) => {
     const chunkHashHex = await sha256hex(chunk);
 
-    const rsaKey = await placement.rsaContainer!.getRsaKey();
-    const publicKeyPem = rsaPublicKeyToPem(rsaKey.n, rsaKey.e);
+    // const rsaKey = await placement.rsaContainer!.getRsaKey();
+    // const publicKeyPem = rsaPublicKeyToPem(rsaKey.n, rsaKey.e);
+
+    const rsaKP = placement.rsaContainer!.rsaKeyPair;
+    const publicKey = rsaKP.publicKey;
+    const publicKeyPem = await crypto.subtle.exportKey('spki', publicKey);
+    const publicKeyPemBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyPem)));
+    const publicKeyPemString = `-----BEGIN PUBLIC KEY-----\n${publicKeyPemBase64}\n-----END PUBLIC KEY-----`;
+    console.log('publicKeyPemString', publicKeyPemString);
 
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
       'X-Placement-Id': placement.id,
       'X-Chunk-Index': chunkIndex.toString(),
       'X-Chunk-Hash': chunkHashHex,
-      'X-RSA-Public-Key': JSON.stringify(publicKeyPem)
+      'X-RSA-Public-Key': stringToB64Url(publicKeyPemString)
     });
 
     const response = await fetch(`${placement.provider}/upload`, {
@@ -694,6 +713,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     console.log('CHUNKS:', metadata.chunks);
     console.log('FOLDER:', assignment.folder);
+    console.log('FILES:', assignment.folder!.files);
     
     const filesAndChunks = [];
     for (let [idx, [file, inFileChunkIdx]] of assignment.folder!.chunkIdxToFile) {
@@ -710,14 +730,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return acc;
     }, {});
     
-    // Sort chunks within each file and update FileMetadata with hashes
-    Object.values(filesAndChunksGroupByFile).forEach(({file, chunks}) => {
-      chunks.sort((a, b) => a.inFileChunkIdx - b.inFileChunkIdx);
-      file.chunkHashes = chunks.reduce((acc, c) => {
-        acc[c.inFileChunkIdx] = c.hash;
-        return acc;
-      }, {} as Record<number, string>);
-    });
+    // // Sort chunks within each file and update FileMetadata with hashes
+    // Object.values(filesAndChunksGroupByFile).forEach(({file, chunks}) => {
+    //   chunks.sort((a, b) => a.inFileChunkIdx - b.inFileChunkIdx);
+    //   file.chunkHashes = chunks.reduce((acc, c) => {
+    //     acc[c.inFileChunkIdx] = c.hash;
+    //     return acc;
+    //   }, {} as Record<number, string>);
+    // });
 
     // Update the assignment with the new file metadata
     setAssignments(prev => prev.map(a => {
@@ -837,7 +857,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         iv
       );
 
-      const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
+      // const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
 
       // const folder = await createFolder();
       // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
@@ -849,16 +869,65 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // console.log('aes', aes);
       // const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
       // console.log('container', container);
+
+      // const rsaKeyPair = await generateRSAKeyPair();
+      // const dataItemFactory = new DataItemFactory(
+      //   /* owner */pubKeyB64!,
+      //   /* target */bufferTob64Url(await sha256(stringToBuffer("empty-target"))), 
+      //   /* root anchor */bufferTob64Url(await sha256(stringToBuffer(assignment.id))),
+      //   /* tags */[
+      //     {name: "ArFleet-Client", value: "Web"},
+      //     {name: "ArFleet-Version", value: ARFLEET_VERSION},
+      //   ],
+      // );
+      // const encryptedDataItemBin = await assignment.dataItemFactory!.createDataItemWithBuffer(new TextEncoder().encode("hello"), /*tags*/[], assignment.walletSigner);
+      // const container = new RSAContainer(rsaKeyPair, encryptedDataItemBin);
+      // const readContainer = await container.slice(0, await container.getByteLength());
+      // const extract = await container.encryptSlice(0, await container.getEncryptedByteLength());
+      // console.log('readContainer', Buffer.from(readContainer).toString('hex').match(/.{1,32}/g)?.join('\n'));
+      // console.log('extract', Buffer.from(extract).toString('hex').match(/.{1,32}/g)?.join('\n'));
+
+      // // send to server
+      // const chunkHashHex = await sha256hex(readContainer);
+
+      // const rsaKP = container.rsaKeyPair;
+      // const publicKey = rsaKP.publicKey;
+      // const publicKeyPem = await crypto.subtle.exportKey('spki', publicKey);
+      // const publicKeyPemBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyPem)));
+      // const publicKeyPemString = `-----BEGIN PUBLIC KEY-----\n${publicKeyPemBase64}\n-----END PUBLIC KEY-----`;
+      // console.log('publicKeyPemString', publicKeyPemString);
   
+      // const h = {
+      //   'Content-Type': 'application/octet-stream',
+      //   'X-Placement-Id': /*placement.id,*/ await sha256hex(new Date().toISOString()),
+      //   'X-Chunk-Index': '0',
+      //   'X-Chunk-Hash': chunkHashHex,
+      //   'X-RSA-Public-Key': stringToB64Url(publicKeyPemString)
+      // };
+      // console.log('h', h);
+      // const headers = new Headers(h);
+  
+      // const response = await fetch(PROVIDERS[0] + '/upload', {
+      //   method: 'POST',
+      //   headers: headers,
+      //   body: readContainer,
+      // });
+      // console.log('response', response);
+  
+
+
       // const obj = container;
       // obj.downloadAsFile("test.obj");
 
       const fileMetadata = new FileMetadata(rawFile);
       // fileMetadata.chunkHashes = chunkHashes;
       // fileMetadata.rollingSha384 = bufferToHex(fileRollingSha384);
+      if (fileMetadata.dataItem) throw new Error("Data item already set");
       fileMetadata.dataItem = dataItem;
+      if (fileMetadata.encryptedDataItem) throw new Error("Encrypted data item already set");
       fileMetadata.aesContainer = aesContainer;
       // fileMetadata.encryptedDataItem = encryptedDataItem;
+      if (fileMetadata.encryptedDataItem) throw new Error("Encrypted data item already set");
       fileMetadata.encryptedDataItem = dataItem; // todo: fix!
       updatedFiles.push(fileMetadata);
 

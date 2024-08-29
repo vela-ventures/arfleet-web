@@ -30,7 +30,7 @@ export class DataItem extends Sliceable {
     tags: Tag[];
     dataHash: DeepHashPointer | null;
     dataItemId: string | null;
-    signature: Uint8Array | null;
+    private signature: Uint8Array | null;
     signer: Function;
 
     hashChunkCount: number;
@@ -47,6 +47,7 @@ export class DataItem extends Sliceable {
     cachedDataItemLength: number | null;
 
     binaryHeaderCached: Uint8Array | null;
+    binaryHeaderCachedDryRun: Uint8Array | null;
 
     constructor(
         dataByteLength: number,
@@ -68,7 +69,6 @@ export class DataItem extends Sliceable {
         this.tags = tags;
         this.dataHash = dataHash;
         this.rawFile = rawFile;
-        this.binaryHeaderCached = null;
         this.dataByteLength = dataByteLength;
         this.cachedDataItemLength = null;
         this.dataItemId = null;
@@ -76,6 +76,9 @@ export class DataItem extends Sliceable {
         this.hashChunkCount = Math.ceil(dataByteLength / HASH_CHUNK_SIZE);
         this.hashChunks = new Map<number, HashChunk>();
         this.highestHashedChunkIdx = -1;
+
+        this.binaryHeaderCached = null;
+        this.binaryHeaderCachedDryRun = null;
     }
 
     async prepareToSign(): Promise<Uint8Array> {
@@ -119,9 +122,11 @@ export class DataItem extends Sliceable {
     }
 
     async setSignature(signature: Uint8Array): Promise<void> {
+      const dataItemId = bufferTob64Url(await sha256(signature));
+
+      if (this.signature) throw new Error("Signature already set");
       this.signature = signature;
-      // calc dataItemId
-      this.dataItemId = bufferTob64Url(await sha256(signature));
+      this.dataItemId = dataItemId;
     }
 
     async sign(): Promise<void> {
@@ -158,14 +163,26 @@ export class DataItem extends Sliceable {
       if (this.signature === null && !dryRun) {
         await this.sign();
       }
+
+dryRun = true;//todo:DELETE
+
       const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
+
+      this.target = bufferTob64Url(new Uint8Array(32).fill(0xee));
 
       const _target = this.target ? b64UrlToBuffer(this.target) : null;
       const target_length = 1 + (_target?.byteLength ?? 0);
+
+      this.anchor = bufferTob64Url(new Uint8Array(32).fill(0xff));
+
+
       const _anchor = this.anchor ? b64UrlToBuffer(this.anchor) : null;
       const anchor_length = 1 + (_anchor?.byteLength ?? 0);
       const _tags = (this.tags?.length ?? 0) > 0 ? serializeTags(this.tags) : null;
       const tags_length = 16 + (_tags ? _tags.byteLength : 0);
+
+      this.owner = bufferTob64Url(new Uint8Array(512).fill(0xcc));
+
       const _owner = b64UrlToBuffer(this.owner);
       const owner_length = _owner.byteLength;
 
@@ -174,7 +191,7 @@ export class DataItem extends Sliceable {
       console.log("tags", _tags)
   
       // Create array with set length
-      const bytes = new Uint8Array(length);
+      const bytes = new Uint8Array(length).fill(0x88);
 
       // Signature type
       bytes[0] = this.signatureType[0];
@@ -257,117 +274,144 @@ export class DataItem extends Sliceable {
         throw new Error("No raw file available");
       }
 
-      if (!this.dataHash) {
-        for(let i=start; i<end; i++) {
-          // set byte i
-          const chunkIdx = Math.floor(i / HASH_CHUNK_SIZE);
-          let chunk: HashChunk;
-          if (!this.hashChunks.has(chunkIdx)) {
-            chunk = {
-              data: new Uint8Array(HASH_CHUNK_SIZE),
-              bytesSet: new Set<number>(),
-              state: "filling",
-              hasher: null
-            };
-            this.hashChunks.set(chunkIdx, chunk);
-            // console.log("NO CHUNK", chunk);
-          } else {
-            chunk = this.hashChunks.get(chunkIdx)!;
-            // console.log("HAS CHUNK", chunk);
-          }
-          // console.log("set byte ", i, chunkIdx, chunk.bytesSet);
+      // if (!this.dataHash) {
+      //   for(let i=start; i<end; i++) {
+      //     // set byte i
+      //     const chunkIdx = Math.floor(i / HASH_CHUNK_SIZE);
+      //     let chunk: HashChunk;
+      //     if (!this.hashChunks.has(chunkIdx)) {
+      //       chunk = {
+      //         data: new Uint8Array(HASH_CHUNK_SIZE),
+      //         bytesSet: new Set<number>(),
+      //         state: "filling",
+      //         hasher: null
+      //       };
+      //       this.hashChunks.set(chunkIdx, chunk);
+      //       // console.log("NO CHUNK", chunk);
+      //     } else {
+      //       chunk = this.hashChunks.get(chunkIdx)!;
+      //       // console.log("HAS CHUNK", chunk);
+      //     }
+      //     // console.log("set byte ", i, chunkIdx, chunk.bytesSet);
 
-          if (chunk.state === "filling") {
-            if (!chunk.bytesSet.has(i)) {
-              chunk.bytesSet.add(i);
-            }  
+      //     if (chunk.state === "filling") {
+      //       if (!chunk.bytesSet.has(i)) {
+      //         chunk.bytesSet.add(i);
+      //       }  
 
-            // mem copy
-            chunk.data.set(slice.slice(i, i+1), i % HASH_CHUNK_SIZE);
+      //       // mem copy
+      //       chunk.data.set(slice.slice(i, i+1), i % HASH_CHUNK_SIZE);
 
-            const unfilledChunk = this.dataByteLength % HASH_CHUNK_SIZE !== 0 && chunkIdx === this.hashChunkCount - 1;
-            const bytesNeeded = unfilledChunk ? this.dataByteLength % HASH_CHUNK_SIZE : HASH_CHUNK_SIZE;
-            if (chunk.bytesSet.size === bytesNeeded) {
-              chunk.state = "filled";
-              chunk.bytesSet = new Set<number>();
-            }
-          }
+      //       const unfilledChunk = this.dataByteLength % HASH_CHUNK_SIZE !== 0 && chunkIdx === this.hashChunkCount - 1;
+      //       const bytesNeeded = unfilledChunk ? this.dataByteLength % HASH_CHUNK_SIZE : HASH_CHUNK_SIZE;
+      //       if (chunk.bytesSet.size === bytesNeeded) {
+      //         chunk.state = "filled";
+      //         chunk.bytesSet = new Set<number>();
+      //       }
+      //     }
 
-          if (chunk.state === "filled") { // could be right after previous if clause
-            // pseudocode
+      //     if (chunk.state === "filled") { // could be right after previous if clause
+      //       // pseudocode
 
-            // highestHashedChunkIdx is a pointer telling us where the hasher stopped, including that hash
-            // best case scenario: highestHashedChunkIdx is previous chunk. we would take the hasher, update with our data, and set highest to us
-            //     after everything, continue until the end, or until you find a gap
-            // if you look -1 left and it's not filled, give up for now because later when the gap is filled, it's gonna roll until us and through us anyway
+      //       // highestHashedChunkIdx is a pointer telling us where the hasher stopped, including that hash
+      //       // best case scenario: highestHashedChunkIdx is previous chunk. we would take the hasher, update with our data, and set highest to us
+      //       //     after everything, continue until the end, or until you find a gap
+      //       // if you look -1 left and it's not filled, give up for now because later when the gap is filled, it's gonna roll until us and through us anyway
 
-            for(let x=chunkIdx; x<this.hashChunkCount; x++) {
-              const xChunk = this.hashChunks.get(x);
-              if (xChunk) {
-                const unfilledChunk = this.dataByteLength % HASH_CHUNK_SIZE !== 0 && x === this.hashChunkCount - 1;
-                const bytesNeeded = unfilledChunk ? this.dataByteLength % HASH_CHUNK_SIZE : HASH_CHUNK_SIZE;
-                const dataToHash = xChunk.data.slice(0, bytesNeeded);
+      //       for(let x=chunkIdx; x<this.hashChunkCount; x++) {
+      //         const xChunk = this.hashChunks.get(x);
+      //         if (xChunk) {
+      //           const unfilledChunk = this.dataByteLength % HASH_CHUNK_SIZE !== 0 && x === this.hashChunkCount - 1;
+      //           const bytesNeeded = unfilledChunk ? this.dataByteLength % HASH_CHUNK_SIZE : HASH_CHUNK_SIZE;
+      //           const dataToHash = xChunk.data.slice(0, bytesNeeded);
     
-                if (xChunk.state === "filled") {
-                  if (x === 0) {
-                    if (this.highestHashedChunkIdx === -1) {
-                      xChunk.hasher = await makeHasher(HashType.SHA384);
-                      xChunk.hasher.update(dataToHash);
-                      xChunk.state = "hashed";
-                      this.highestHashedChunkIdx = x;
-                      // now it will continue to the next one
-                    } else {
-                      throw new Error("Invalid state");
-                    }
-                  } else {
-                    if (this.highestHashedChunkIdx === x - 1) {
-                      // take the hasher, update with our data, and set highest to us
-                      const pChunk = this.hashChunks.get(x - 1)!;
-                      if (!pChunk.hasher) throw new Error("Previous chunk hasher not found");
-                      pChunk.hasher.update(dataToHash);
-                      xChunk.state = "hashed";
-                      xChunk.hasher = pChunk.hasher;
-                      pChunk.hasher = null;
-                      pChunk.data = new Uint8Array(0);
-                      this.highestHashedChunkIdx = x;
-                      // now it will continue to the next one
-                    } else {
-                      // gap, give up
-                      break;
-                    }
-                  }
-                }
-              } else {
-                // gap, give up
-                break;
-              }
-            }
+      //           if (xChunk.state === "filled") {
+      //             if (x === 0) {
+      //               if (this.highestHashedChunkIdx === -1) {
+      //                 xChunk.hasher = await makeHasher(HashType.SHA384);
+      //                 xChunk.hasher.update(dataToHash);
+      //                 xChunk.state = "hashed";
+      //                 this.highestHashedChunkIdx = x;
+      //                 // now it will continue to the next one
+      //               } else {
+      //                 throw new Error("Invalid state");
+      //               }
+      //             } else {
+      //               if (this.highestHashedChunkIdx === x - 1) {
+      //                 // take the hasher, update with our data, and set highest to us
+      //                 const pChunk = this.hashChunks.get(x - 1)!;
+      //                 if (!pChunk.hasher) throw new Error("Previous chunk hasher not found");
+      //                 pChunk.hasher.update(dataToHash);
+      //                 xChunk.state = "hashed";
+      //                 xChunk.hasher = pChunk.hasher;
+      //                 pChunk.hasher = null;
+      //                 pChunk.data = new Uint8Array(0);
+      //                 this.highestHashedChunkIdx = x;
+      //                 // now it will continue to the next one
+      //               } else {
+      //                 // gap, give up
+      //                 break;
+      //               }
+      //             }
+      //           }
+      //         } else {
+      //           // gap, give up
+      //           break;
+      //         }
+      //       }
 
-            if (this.highestHashedChunkIdx === this.hashChunkCount - 1) {
-              // we're done, extract the hash
-              const lastChunk = this.hashChunks.get(this.hashChunkCount - 1);
-              if (!lastChunk) throw new Error("Last chunk not found");
-              const hash = lastChunk.hasher?.finalize();
-              if (!hash) throw new Error("Hash not found");
-              this.dataHash = {
-                value: hash,
-                role: 'file-dataitem',
-                dataLength: this.dataByteLength
-              };
-              // console.log("HASH DATA ITEM", this.dataHash);
-              this.hashChunks.clear();
-            }
-          }
-        }
+      //       if (this.highestHashedChunkIdx === this.hashChunkCount - 1) {
+      //         // we're done, extract the hash
+      //         const lastChunk = this.hashChunks.get(this.hashChunkCount - 1);
+      //         if (!lastChunk) throw new Error("Last chunk not found");
+      //         const hash = lastChunk.hasher?.finalize();
+      //         if (!hash) throw new Error("Hash not found");
+      //         this.dataHash = {
+      //           value: hash,
+      //           role: 'file-dataitem',
+      //           dataLength: this.dataByteLength
+      //         };
+      //         // console.log("HASH DATA ITEM", this.dataHash);
+      //         this.hashChunks.clear();
+      //       }
+      //     }
+      //   }
 
-        // console.log("slice reading", start, end);
-        // console.log("slice", slice);
-        // console.log("highestHashedChunkIdx", this.highestHashedChunkIdx);
-        // console.log("hashChunkCount", this.hashChunkCount);
-        // console.log("hashChunks", this.hashChunks);
-      }
+      //   // console.log("slice reading", start, end);
+      //   // console.log("slice", slice);
+      //   // console.log("highestHashedChunkIdx", this.highestHashedChunkIdx);
+      //   // console.log("hashChunkCount", this.hashChunkCount);
+      //   // console.log("hashChunks", this.hashChunks);
+      // }
 
       return slice;
+    }
+
+    async forceCalcDataHash() {
+      if (this.dataHash) return;
+      
+      this.dataHash = null;
+      const totalLength = await this.getUnderlyingLength();
+      const chunkSize = 1024 * 1024; // 1MB chunks
+      const hasher = await makeHasher(HashType.SHA384);
+
+      for (let start = 0; start < totalLength; start += chunkSize) {
+        const end = Math.min(start + chunkSize, totalLength);
+        const chunk = await this.sliceUnderlying(start, end);
+        await hasher.update(chunk);
+      }
+
+      const hash = await hasher.finalize();
+      this.dataHash = {
+        value: hash,
+        role: 'file-dataitem',
+        dataLength: totalLength
+      };
+
+      // signature
+      await this.sign();
+
+      return this.dataHash;
     }
 
     async buildParts(): Promise<SliceParts> {
@@ -378,6 +422,10 @@ export class DataItem extends Sliceable {
       // Data length
       const dataLength = await this.getUnderlyingLength();
       parts.push([8, longTo8ByteArray(dataLength)]);
+
+      // const dataHash = await this.forceCalcDataHash();
+      // if (!dataHash) throw new Error("Data hash not found");
+      // parts.push([32, dataHash.value]);
 
       // Data
       parts.push([dataLength, this.sliceUnderlying.bind(this)]);
@@ -397,6 +445,8 @@ export class DataItem extends Sliceable {
     }
 
     async sliceHeader(start: number, end: number): Promise<Uint8Array> {
+      await this.forceCalcDataHash();
+
       if (!this.binaryHeaderCached) this.binaryHeaderCached = await this.exportBinaryHeader(false);
       return this.binaryHeaderCached.slice(start, end);
     }

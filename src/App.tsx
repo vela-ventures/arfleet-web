@@ -242,8 +242,8 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
     // { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
     { name: "Settings", href: "/settings", icon: <CogIcon className="h-4 w-4" />, component: <Settings /> },
     { type: 'separator' },
-    { name: "Website", href: "/website", icon: <Globe className="h-4 w-4" />, component: <Customers /> },
-    { name: "Documentation", href: "/docs", icon: <FileText className="h-4 w-4" />, component: <Customers /> },
+    { name: "Website", href: "https://arfleet.io", icon: <Globe className="h-4 w-4" />, component: <Customers /> },
+    { name: "Documentation", href: "https://docs.arfleet.io", icon: <FileText className="h-4 w-4" />, component: <Customers /> },
   ];
 
   useEffect(() => {

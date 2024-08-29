@@ -28,7 +28,8 @@ export class FolderManifest extends Sliceable {
         let paths: any = {};
         for (const file of this.files) {
             paths[file.name] = {
-               id: dryRun ? stringToB64Url(' '.repeat(32)) : await file.encryptedDataItem!.getDataItemId(),
+            //    id: dryRun ? stringToB64Url(' '.repeat(32)) : await file.encryptedDataItem!.getDataItemId(),
+               id: dryRun ? stringToB64Url(' '.repeat(32)) : await file.dataItem!.getDataItemId(),
                size: file.size
             };
         }

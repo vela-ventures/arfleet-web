@@ -110,6 +110,24 @@ export abstract class Sliceable {
     }
 
     abstract buildParts(): Promise<SliceParts>;
+
+    async dumpParts(parts: SliceParts): Promise<string> {
+      const result = [];
+      let currentPosition = 0;
+      for (const part of parts) {
+        const [length, bytes] = part;
+        const partStart = currentPosition;
+        const partEnd = currentPosition + length;
+        result.push([
+          partStart,
+          partEnd,
+          length,
+          bytes
+        ]);
+        currentPosition += length;
+      }
+      return result;
+    }
 }
 
 function isTwoParamFunction(func: any): func is (start: number, end: number) => Promise<Uint8Array> {

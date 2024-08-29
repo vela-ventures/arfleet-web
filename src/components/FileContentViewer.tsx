@@ -88,10 +88,9 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
         onMouseLeave={() => setHoveredFolder(null)}
       >
         <div className={`flex items-center py-2 px-2 group text-sm rounded-md
-          ${item.type === 'folder' ? 'bg-blue-50' : ''}
-          ${hoveredFolder === item.path ? 'bg-blue-100' : ''}
-          ${isDescendantOfHoveredFolder(item.path) ? 'bg-blue-50/50' : ''}
-          ${item.type === 'file' ? 'hover:bg-gray-100' : ''}`}
+          ${hoveredFolder === item.path ? 'bg-gray-200 dark:bg-gray-700' : ''}
+          ${isDescendantOfHoveredFolder(item.path) ? 'bg-gray-100 dark:bg-gray-800' : ''}
+          ${item.type === 'file' ? 'hover:bg-gray-100 dark:hover:bg-gray-800' : ''}`}
         >
           <Checkbox
             className="opacity-0 group-hover:opacity-100 mr-2 h-4 w-4"
@@ -121,7 +120,7 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
                 variant="outline"
                 onClick={() => item.file && downloadFile(item.file)}
                 disabled={isDownloading}
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white hover:bg-blue-100 transition-colors duration-200 mr-2"
+                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 mr-2 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
                 <DownloadIcon className="w-4 h-4 mr-1" />
                 {isDownloading ? 'Downloading...' : 'Download'}
@@ -130,7 +129,7 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
                 size="sm"
                 variant="outline"
                 onClick={() => console.log('Share clicked')} // Add your share logic here
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white hover:bg-blue-100 transition-colors duration-200 mr-2"
+                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 mr-2 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
                 <ShareIcon className="w-4 h-4 mr-1" />
                 Share
@@ -139,7 +138,7 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
                 size="sm"
                 variant="outline"
                 onClick={() => console.log('Immortalize clicked')} // Add your immortalize logic here
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white hover:bg-blue-100 transition-colors duration-200"
+                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
                 <span className="w-4 h-4 mr-1 inline-flex items-center justify-center border border-current rounded-full text-xs">
                   <span className="relative bottom-[1px]">a</span>
