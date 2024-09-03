@@ -1,18 +1,18 @@
 import { AESEncryptedContainer } from "./aes";
 import { Sliceable, SliceParts } from "./sliceable.js";
 import init, { Hasher, HashType, RsaEncryptor } from '../../wasm/pkg/wasm_helpers.js';
-import { longTo8ByteArray } from "./buf.js";
+import { concatBuffers, longTo8ByteArray } from "./buf.js";
 import { EncryptedContainer } from "./encryptedContainer.js";
 import { PLACEMENT_BLOB_CHUNK_SIZE } from "./placementBlob.js";
 
 export const RSA_KEY_SIZE = 1024;
 
-const RSA_PADDING = 11;
+const RSA_PADDING = 1;
 
 export const RSA_ENCRYPTED_CHUNK_SIZE = RSA_KEY_SIZE / 8;
 export const RSA_UNDERLYING_CHUNK_SIZE = RSA_ENCRYPTED_CHUNK_SIZE - RSA_PADDING;
 
-export const RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE = PLACEMENT_BLOB_CHUNK_SIZE - RSA_ENCRYPTED_CHUNK_SIZE; // take 1 chunk for header // todo
+export const RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE = (PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE) * RSA_UNDERLYING_CHUNK_SIZE; // take 1 chunk for header // todo
 
 export const RSA_HEADER_SIZE = RSA_ENCRYPTED_CHUNK_SIZE;
 
@@ -23,7 +23,8 @@ export class RSAContainer extends EncryptedContainer {
   private cachedRsaKey: RsaKey | null = null;
   private isInitialized: boolean = false;
 
-  rsaChunkHashes: Uint8Array[] = [];
+  rsaChunkHashes: Map<number, Uint8Array> = new Map();
+  plaintextChunkHashes: Map<number, Uint8Array> = new Map();
 
   constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
     super();
@@ -55,101 +56,109 @@ export class RSAContainer extends EncryptedContainer {
     return this.cachedRsaKey;
   }
 
-  // async buildParts(): Promise<SliceParts> {
-  //   const parts: SliceParts = [];
+  async encryptPlacementChunk(c: number, start: number, end: number): Promise<Uint8Array> {
+    const decryptedOffsetStart = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE * c;
+    const decryptedOffsetEnd = decryptedOffsetStart + RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE;
+    
+    const plainTextChunk = await this.inner!.slice(decryptedOffsetStart, decryptedOffsetEnd);
 
-  //   // let encryptedLengthLeft = await this.getEncryptedByteLength();
-  //   let decryptedLengthLeft = await this.inner!.getByteLength();
+    if (plainTextChunk.byteLength !== RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE) {
+      throw new Error(`Plain text chunk must be ${RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE} bytes but was ${plainTextChunk.byteLength}`);
+    }
 
-  //   // // How many RSA chunks are needed to encrypt the file?
-  //   // const rsaChunkCount = Math.ceil(decryptedLengthLeft / RSA_UNDERLYING_CHUNK_SIZE);
+    const rsaChunksPerPlacementChunk = PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE;
 
-  //   let break_out = false;
-  //   let c = 0;
-  //   while(decryptedLengthLeft > 0 && !break_out) {
-  //     // 1 rsa chunk out of 64
-  //     const magicString = "arf::rsa";
-  //     parts.push([magicString.length, new TextEncoder().encode(magicString)]);
-  //     parts.push([8, longTo8ByteArray((decryptedLengthLeft >= RSA_UNDERLYING_CHUNK_SIZE) ? RSA_UNDERLYING_CHUNK_SIZE : decryptedLengthLeft)]);
-  //     const zeroLen = RSA_ENCRYPTED_CHUNK_SIZE - 8 - 8;
-  //     parts.push([zeroLen, this.zeroes.bind(this, 0, zeroLen)]);
+    const encryptedChunks = [];
+    for (let i = 0; i < rsaChunksPerPlacementChunk; i++) {
+      const rsaKey = await this.getRsaKey();
 
-  //     // parts.push([await this.getEncryptedByteLength(), ((start: number, end: number) => {
-  //     //   return this.newEncryptedSlice(start, end);
-  //     // }).bind(this, 0, )]);
-  //     for(let i = 0; i < 63; i++) {
-  //       let len = (decryptedLengthLeft >= RSA_UNDERLYING_CHUNK_SIZE) ? RSA_UNDERLYING_CHUNK_SIZE : decryptedLengthLeft;
-  //       let encryptedLen = RSA_ENCRYPTED_CHUNK_SIZE;
-  //       parts.push([encryptedLen, (async (c: number, boundLen: number, start: number, end: number) => {
-  //         const encryptedChunk = await this.encryptChunk(c);
-  //         return encryptedChunk.slice(start, end);
-  //       }).bind(this, c, encryptedLen) ]);
-  //       c++;
-  //       decryptedLengthLeft -= len;
+      const sliceStart = i * RSA_UNDERLYING_CHUNK_SIZE;
+      const sliceEnd = (i === rsaChunksPerPlacementChunk - 1) ? plainTextChunk.byteLength : sliceStart + RSA_UNDERLYING_CHUNK_SIZE;
 
-  //       if (decryptedLengthLeft <= 0) {
-  //         break_out = true;
-  //         break;
-  //       }
-  //     }
+      const paddedChunk = padRight(plainTextChunk.slice(sliceStart, sliceEnd), RSA_UNDERLYING_CHUNK_SIZE);
 
-  //     if (break_out) {
-  //       break;
-  //     }
-  //   }
+      const encryptedChunk = await rsaEncrypt(paddedChunk, rsaKey);
 
-  //   console.log('RSA PARTS', {parts});
+      if (encryptedChunk.byteLength !== RSA_ENCRYPTED_CHUNK_SIZE) {
+        throw new Error(`Encrypted chunk must be ${RSA_ENCRYPTED_CHUNK_SIZE} bytes but was ${encryptedChunk.byteLength}`);
+      }
 
-  //   return parts;
-  // }
+      encryptedChunks.push(encryptedChunk);
+    }
+
+    const together = concatBuffers(encryptedChunks);
+
+    if (together.byteLength !== PLACEMENT_BLOB_CHUNK_SIZE) {
+      throw new Error(`Together must be ${PLACEMENT_BLOB_CHUNK_SIZE} bytes but was ${together.byteLength}`);
+    }
+
+    return together.slice(start, end);
+  }
+
   async buildParts(): Promise<SliceParts> {
     const parts: SliceParts = [];
 
     let encryptedLengthLeft = await this.getEncryptedByteLength();
-    let decryptedLengthLeft = await this.inner!.getByteLength();
+    // let decryptedLengthLeft = await this.inner!.getByteLength();
 
     // // How many RSA chunks are needed to encrypt the file?
     // const rsaChunkCount = Math.ceil(decryptedLengthLeft / RSA_UNDERLYING_CHUNK_SIZE);
 
-    let break_out = false;
+    // let break_out = false;
     let c = 0;
-    while(encryptedLengthLeft > 0 && !break_out) {
-      // 1 rsa chunk out of 64
-      const magicString = "arf::rsa";
-      parts.push([magicString.length, new TextEncoder().encode(magicString)]);
+    while(encryptedLengthLeft > 0) {
+      // // 1 rsa chunk out of 64
+      // const magicString = "arf::rsa";
+      // parts.push([magicString.length, new TextEncoder().encode(magicString)]);
 
-      const spaceForEncryptedRSA = PLACEMENT_BLOB_CHUNK_SIZE - RSA_HEADER_SIZE;
-      parts.push([8, longTo8ByteArray((encryptedLengthLeft >= spaceForEncryptedRSA) ? spaceForEncryptedRSA : encryptedLengthLeft)]);
-      const zeroLen = RSA_ENCRYPTED_CHUNK_SIZE - 8 - 8;
-      parts.push([zeroLen, this.zeroes.bind(this, 0, zeroLen)]);
+      // const spaceForEncryptedRSA = PLACEMENT_BLOB_CHUNK_SIZE - RSA_HEADER_SIZE;
+      // parts.push([8, longTo8ByteArray((encryptedLengthLeft >= spaceForEncryptedRSA) ? spaceForEncryptedRSA : encryptedLengthLeft)]);
+      // const zeroLen = RSA_ENCRYPTED_CHUNK_SIZE - 8 - 8;
+      // parts.push([zeroLen, this.zeroes.bind(this, 0, zeroLen)]);
 
       // parts.push([await this.getEncryptedByteLength(), ((start: number, end: number) => {
       //   return this.newEncryptedSlice(start, end);
       // }).bind(this, 0, )]);
-      for(let i = 0; i < 63; i++) {
-        console.log('INNER LOOP', {c, i, encryptedLengthLeft, decryptedLengthLeft});
-        // let len = (decryptedLengthLeft >= RSA_UNDERLYING_CHUNK_SIZE) ? RSA_UNDERLYING_CHUNK_SIZE : decryptedLengthLeft;
-        let encryptedLen = RSA_ENCRYPTED_CHUNK_SIZE;
-        let decryptedLen = RSA_UNDERLYING_CHUNK_SIZE;
-        parts.push([encryptedLen, (async (c: number, boundLen: number, start: number, end: number) => {
-          const encryptedChunk = await this.encryptChunk(c);
-          console.log('encryptedChunk', 'c=', c, 'encryptedChunk', encryptedChunk, 'slicing', start, end);
-          return encryptedChunk.slice(start, end);
-        }).bind(this, c, encryptedLen) ]);
-        c++;
-        // decryptedLengthLeft -= len;
-        encryptedLengthLeft -= encryptedLen;
-        decryptedLengthLeft -= decryptedLen;
 
-        if (encryptedLengthLeft <= 0) {
-          break_out = true;
-          break;
-        }
-      }
+      let encryptedPlacementLen = PLACEMENT_BLOB_CHUNK_SIZE;
+      parts.push([encryptedPlacementLen, this.encryptPlacementChunk.bind(this, c)]);
 
-      if (break_out) {
+      c++;
+      encryptedLengthLeft -= encryptedPlacementLen;
+      // decryptedLengthLeft -= PLACEMENT_BLOB_CHUNK_SIZE;
+
+      if (encryptedLengthLeft <= 0) {
+        // break_out = true;
         break;
       }
+          
+      //   (async (c: number, boundLen: number, start: number, end: number) => {
+      //   const encryptedChunk = await this.encryptChunk(c);
+      //   console.log('encryptedChunk', 'c=', c, 'encryptedChunk', encryptedChunk, 'slicing', start, end);
+      //   return encryptedChunk.slice(start, end);
+      // }).bind(this, c, encryptedLen) ]);
+
+
+      // for(let i = 0; i < 64; i++) {
+      //   console.log('INNER LOOP', {c, i, encryptedLengthLeft, decryptedLengthLeft});
+      //   // let len = (decryptedLengthLeft >= RSA_UNDERLYING_CHUNK_SIZE) ? RSA_UNDERLYING_CHUNK_SIZE : decryptedLengthLeft;
+      //   let encryptedLen = RSA_ENCRYPTED_CHUNK_SIZE;
+      //   let decryptedLen = RSA_UNDERLYING_CHUNK_SIZE;
+      //   parts.push([encryptedLen, (async (c: number, boundLen: number, start: number, end: number) => {
+      //     const encryptedChunk = await this.encryptChunk(c);
+      //     console.log('encryptedChunk', 'c=', c, 'encryptedChunk', encryptedChunk, 'slicing', start, end);
+      //     return encryptedChunk.slice(start, end);
+      //   }).bind(this, c, encryptedLen) ]);
+      //   c++;
+      //   // decryptedLengthLeft -= len;
+      //   encryptedLengthLeft -= encryptedLen;
+      //   decryptedLengthLeft -= decryptedLen;
+
+      //   if (encryptedLengthLeft <= 0) {
+      //     break_out = true;
+      //     break;
+      //   }
+      // }
     }
 
     console.log('RSA PARTS', {parts});
@@ -327,7 +336,12 @@ export async function rsaEncrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Ar
   if (data.length > maxSize) {
     throw new Error(`Data is too long: ${data.length} bytes, maximum is ${maxSize} bytes`);
   }
-  const paddedData = padRight(data, key.bits / 8);
+
+  if (data.byteLength !== maxSize) {
+    throw new Error(`Data is not the correct length: ${data.byteLength} bytes, expected ${maxSize} bytes`);
+  }
+  const paddedData = padLeft(data, key.bits / 8);
+
   log(`RSA Encrypting data (${paddedData.length} bytes): ${bufferToHex(paddedData)}`);
   const encrypted = new Uint8Array(encryptor.private_encrypt(paddedData, key.n, key.d));
   log(`RSA Encrypted result (${encrypted.length} bytes): ${bufferToHex(encrypted)}`);
@@ -345,11 +359,20 @@ export async function rsaDecrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Ar
 }
 
 function padRight(data: Uint8Array, targetLength: number): Uint8Array {
-  if (data.length > targetLength || data.length === targetLength) {
-      throw new Error("Data is too long: " + data.length + " bytes, target length is " + targetLength + " bytes, and we need -PADDING");
+  if (data.length > targetLength) {
+    throw new Error("Data is too long: " + data.length + " bytes, target length is " + targetLength + " bytes, and we need -PADDING");
   }
   const padded = new Uint8Array(targetLength);
   padded.set(data, 0);
+  return padded;
+}
+
+function padLeft(data: Uint8Array, targetLength: number): Uint8Array {
+  if (data.length > targetLength) {
+    throw new Error("Data is too long: " + data.length + " bytes, target length is " + targetLength + " bytes, and we need -PADDING");
+  }
+  const padded = new Uint8Array(targetLength);
+  padded.set(data, targetLength - data.length);
   return padded;
 }
 

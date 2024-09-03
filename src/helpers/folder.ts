@@ -3,6 +3,7 @@ import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from "./aes";
 import { concatBuffers } from "./buf";
 import { DataItem, DataItemFactory } from "./dataitemmod";
 import { createSalt, encKeyFromMasterKeyAndSalt } from "./encrypt";
+import { downloadUint8ArrayAsFile } from "./extra";
 import { FolderManifest } from "./folderManifest";
 import { sha256hex } from "./hash";
 import { PassthroughAES } from "./passthroughAES";
@@ -10,8 +11,7 @@ import { PLACEMENT_BLOB_CHUNK_SIZE } from "./placementBlob";
 import { RSA_ENCRYPTED_CHUNK_SIZE, RSA_HEADER_SIZE, RSA_UNDERLYING_CHUNK_SIZE } from "./rsa";
 import { Sliceable, SlicePart, SliceParts } from "./sliceable";
 
-// const FOLDER_FILE_BOUNDARY = (PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE) * RSA_UNDERLYING_CHUNK_SIZE - RSA_HEADER_SIZE;
-const FOLDER_FILE_BOUNDARY = PLACEMENT_BLOB_CHUNK_SIZE - RSA_HEADER_SIZE;
+const FOLDER_FILE_BOUNDARY = (PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE) * RSA_UNDERLYING_CHUNK_SIZE;
 
 export class Folder extends Sliceable {
     files: FileMetadata[] = [];
@@ -38,9 +38,8 @@ export class Folder extends Sliceable {
         return 0;
     }
 
-    async sliceThroughFile(file: FileMetadata, start: number, end: number) {
-        // const byteLength = await file.encryptedDataItem!.getByteLength();
-        const byteLength = await file.dataItem!.getByteLength();
+    async sliceThroughFileDataItem(file: FileMetadata, start: number, end: number) {
+        const byteLength = await file.encryptedDataItem!.getByteLength();
         
         const chunkIdxStart = Math.floor(start / FOLDER_FILE_BOUNDARY);
         const chunkIdxFinal = Math.floor((end-1) / FOLDER_FILE_BOUNDARY);
@@ -49,7 +48,9 @@ export class Folder extends Sliceable {
 
         for(let curChunkIdx = chunkIdxStart; curChunkIdx <= chunkIdxFinal; curChunkIdx++) {
             // const chunk = await file.encryptedDataItem!.slice(curChunkIdx * FOLDER_FILE_BOUNDARY, Math.min(curChunkIdx * FOLDER_FILE_BOUNDARY + FOLDER_FILE_BOUNDARY, byteLength));
-            const chunk = await file.dataItem!.slice(curChunkIdx * FOLDER_FILE_BOUNDARY, Math.min(curChunkIdx * FOLDER_FILE_BOUNDARY + FOLDER_FILE_BOUNDARY, byteLength));
+            const chunkStartByte = curChunkIdx * FOLDER_FILE_BOUNDARY;
+            const chunkSize = (curChunkIdx === chunkIdxFinal) ? byteLength % FOLDER_FILE_BOUNDARY : FOLDER_FILE_BOUNDARY;
+            const chunk = await file.encryptedDataItem!.slice(chunkStartByte, chunkStartByte + chunkSize);
             const hash = await sha256hex(chunk);
             console.log('effective hash of chunk:', new TextDecoder().decode(chunk), chunk.byteLength, hash, curChunkIdx, file);
             file.chunkHashes[curChunkIdx] = hash;
@@ -74,16 +75,21 @@ export class Folder extends Sliceable {
         for (const file of this.files) {
             console.log({file})
 
-            // Aligning the files to the boundary
+            // File
 
-            // const byteLength = await file.encryptedDataItem!.getByteLength();
-            const byteLength = await file.dataItem!.getByteLength();
-            parts.push([byteLength, this.sliceThroughFile.bind(this, file)] as SlicePart);
+            const byteLength = await file.encryptedDataItem!.getByteLength();
+            parts.push([byteLength, this.sliceThroughFileDataItem.bind(this, file)] as SlicePart);
 
+            // Align with zeroes to the boundary
+
+            console.log("FOLDER_FILE_BOUNDARY", FOLDER_FILE_BOUNDARY);
             const diff = await this.remainingZeroes(byteLength, FOLDER_FILE_BOUNDARY);
+            console.log("diff", diff);
             if (diff > 0) {
                 parts.push([diff, this.zeroes.bind(this, 0, diff)] as SlicePart);
             }
+
+            // -
 
             const totalChunks = Math.ceil(byteLength / FOLDER_FILE_BOUNDARY);
 
@@ -122,6 +128,7 @@ export class Folder extends Sliceable {
 
         console.log('FOLDER PARTS:', await this.dumpParts(parts));
         // console.log('FOLDER PARTS:', await this.dumpParts());
+
         return parts;
     }
 }

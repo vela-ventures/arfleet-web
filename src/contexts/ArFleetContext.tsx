@@ -23,6 +23,7 @@ import { ARFLEET_VERSION } from '@/helpers/version';
 import { rsaPublicKeyToPem } from '../helpers/rsa';
 import { Passthrough } from '@/helpers/passthrough';
 import { PassthroughAES } from '@/helpers/passthroughAES';
+import { downloadUint8ArrayAsFile } from '@/helpers/extra';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -714,6 +715,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     console.log('CHUNKS:', metadata.chunks);
     console.log('FOLDER:', assignment.folder);
     console.log('FILES:', assignment.folder!.files);
+
+    // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
     
     const filesAndChunks = [];
     for (let [idx, [file, inFileChunkIdx]] of assignment.folder!.chunkIdxToFile) {
@@ -943,7 +946,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const placements = await Promise.all(PROVIDERS.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
 
-      const rsaContainer = new Passthrough(rsaKeyPair, folder);
+      const rsaContainer = new RSAContainer(rsaKeyPair, folder);
       console.log('container', rsaContainer);
 
       const placementBlob = new PlacementBlob(rsaContainer);

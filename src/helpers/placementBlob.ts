@@ -10,6 +10,8 @@ export class PlacementBlob extends Sliceable {
     }
 
     async buildParts(): Promise<SliceParts> {
+        console.log('PLACEMENT BLOB INNER SIZE', await this.inner.getByteLength());
+
         return [
             [await this.inner.getByteLength(), this.inner.slice.bind(this.inner)]
         ];

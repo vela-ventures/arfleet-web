@@ -66,42 +66,59 @@ export abstract class Sliceable {
 
         let result: Uint8Array[] = [];
         let currentPosition = 0;
-      
+
         for (const part of parts) {
-          const [ length, bytes ] = part;
-      
-          if (length < 0) throw new Error("Invalid part length");
-      
-          const partStart = currentPosition;
-          const partEnd = currentPosition + length;
-      
-          if (partEnd > start && partStart < end) {
-            const sliceStart = Math.max(0, start - partStart);
-            const sliceEnd = Math.min(length, end - partStart);
-      
-            if (typeof bytes === 'function') {
-              if (isTwoParamFunction(bytes)) {
-                result.push(await bytes(sliceStart, sliceEnd));
-              } else if (isNoParamFunction(bytes)) {
-                result.push((await bytes()).slice(sliceStart, sliceEnd));
-              } else {
-                throw new Error('Invalid function type for bytes');
-              }
-            } else if (bytes instanceof Uint8Array) {
-              result.push(bytes.slice(sliceStart, sliceEnd));
-            } else if (bytes instanceof File) {
-              result.push(await readFileChunk(bytes, sliceStart, sliceEnd));
-            } else if (bytes instanceof Sliceable) {
-              result.push(await bytes.slice(sliceStart, sliceEnd));
-            } else {
-              throw new Error('Invalid type for bytes');
+            const [length, bytes] = part;
+
+            if (length < 0) throw new Error("Invalid part length");
+
+            const partStart = currentPosition;
+            const partEnd = currentPosition + length;
+
+            if (partEnd > start && partStart < end) {
+                const sliceStart = Math.max(0, start - partStart);
+                const sliceEnd = Math.min(length, end - partStart);
+
+                if (sliceStart > sliceEnd) throw new Error(`This should never happen: start=${sliceStart}, end=${sliceEnd}`);
+                if (sliceStart < 0) throw new Error(`This should never happen: start=${sliceStart}`);
+                if (sliceEnd < 0) throw new Error(`This should never happen: end=${sliceEnd}`);
+                if (sliceStart >= length) throw new Error(`This should never happen: start=${sliceStart} is greater than or equal to length=${length}`);
+                if (sliceEnd > length) throw new Error(`This should never happen: end=${sliceEnd} is greater than length=${length}`);
+
+                if (sliceStart === sliceEnd) {
+                    continue;
+                }
+
+                let push: Uint8Array | null = null;
+                if (typeof bytes === 'function') {
+                    if (isTwoParamFunction(bytes)) {
+                        push = await bytes(sliceStart, sliceEnd);
+                    } else if (isNoParamFunction(bytes)) {
+                        push = (await bytes()).slice(sliceStart, sliceEnd);
+                    } else {
+                        throw new Error('Invalid function type for bytes');
+                    }
+                } else if (bytes instanceof Uint8Array) {
+                    push = bytes.slice(sliceStart, sliceEnd);
+                } else if (bytes instanceof File) {
+                    push = await readFileChunk(bytes, sliceStart, sliceEnd);
+                } else if (bytes instanceof Sliceable) {
+                    push = await bytes.slice(sliceStart, sliceEnd);
+                } else {
+                    throw new Error('Invalid type for bytes');
+                }
+
+                if (push.byteLength !== sliceEnd - sliceStart) {
+                    throw new Error(`Invalid slice returned: expected ${sliceEnd - sliceStart} bytes, got ${push.byteLength}`);
+                } else {
+                    result.push(push);
+                }
             }
-          }
-      
-          currentPosition += length;
-          if (currentPosition >= end) break;
+
+            currentPosition += length;
+            if (currentPosition >= end) break;
         }
-        
+
         return concatBuffers(result);
     }
 

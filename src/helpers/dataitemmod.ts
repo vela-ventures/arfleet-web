@@ -164,24 +164,15 @@ export class DataItem extends Sliceable {
         await this.sign();
       }
 
-dryRun = true;//todo:DELETE
-
       const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
-
-      this.target = bufferTob64Url(new Uint8Array(32).fill(0xee));
 
       const _target = this.target ? b64UrlToBuffer(this.target) : null;
       const target_length = 1 + (_target?.byteLength ?? 0);
-
-      this.anchor = bufferTob64Url(new Uint8Array(32).fill(0xff));
-
 
       const _anchor = this.anchor ? b64UrlToBuffer(this.anchor) : null;
       const anchor_length = 1 + (_anchor?.byteLength ?? 0);
       const _tags = (this.tags?.length ?? 0) > 0 ? serializeTags(this.tags) : null;
       const tags_length = 16 + (_tags ? _tags.byteLength : 0);
-
-      this.owner = bufferTob64Url(new Uint8Array(512).fill(0xcc));
 
       const _owner = b64UrlToBuffer(this.owner);
       const owner_length = _owner.byteLength;
@@ -191,7 +182,7 @@ dryRun = true;//todo:DELETE
       console.log("tags", _tags)
   
       // Create array with set length
-      const bytes = new Uint8Array(length).fill(0x88);
+      const bytes = new Uint8Array(length).fill(0xff);
 
       // Signature type
       bytes[0] = this.signatureType[0];
@@ -237,6 +228,8 @@ dryRun = true;//todo:DELETE
       }
 
       // downloadUint8ArrayAsFile(bytes, "dataitem.bin");
+
+      if (bytes.byteLength !== length) throw new Error(`Bytes must be ${length} bytes but was ${bytes.byteLength}`);
 
       return bytes;
     }

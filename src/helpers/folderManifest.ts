@@ -16,7 +16,8 @@ export class FolderManifest extends Sliceable {
         const manifestTemplate = await this.getManifest(true);
 
         return [
-            [manifestTemplate.length, this.sliceManifest.bind(this)]
+            [500, new Uint8Array(500).fill(0xff)],
+            [manifestTemplate.length, this.sliceManifest.bind(this)],
         ];
     }
 
