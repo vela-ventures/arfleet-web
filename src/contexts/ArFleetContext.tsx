@@ -43,6 +43,7 @@ export class FileMetadata {
   aesContainer: AESEncryptedContainer | null;
   chunkHashes: Record<number, string>;
   arp: Arp | null;
+  arpId: string | null;
 
   constructor(file: File | FileMetadata) {
     if (file instanceof File) {
@@ -51,6 +52,7 @@ export class FileMetadata {
       this.path = (file as any).path || file.webkitRelativePath || file.name;
       this.chunkHashes = {};
       this.arp = null;
+      this.arpId = null;
     } else {
       Object.assign(this, file);
     }
@@ -716,39 +718,47 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // console.log('FILES:', assignment.folder!.files);
     // console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
 
-    const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
+    // const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
+    // // Update the assignment with the finalIndexHash as arpId
+    // const updatedAssignment = new StorageAssignment({
+    //   ...assignment,
+    //   arpId: finalIndexHash
+    // });
     // console.log('FINAL INDEX HASH:', finalIndexHash);
     
     // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
     
-    const filesAndChunks = [];
-    for (let [idx, [file, inFileChunkIdx]] of assignment.folder!.chunkIdxToFile) {
-      filesAndChunks.push({file, chunk: idx, inFileChunkIdx, hash: metadata.chunks[idx]});
-    }
-    const filesAndChunksGroupByFile = filesAndChunks.reduce<Record<string, {
-      file: FileMetadata,
-      chunks: Array<{chunk: number, inFileChunkIdx: number, hash: string}>
-    }>>((acc, {file, chunk, inFileChunkIdx, hash}) => {
-      if (!acc[file.path]) {
-        acc[file.path] = { file, chunks: [] };
-      }
-      acc[file.path].chunks.push({chunk, inFileChunkIdx, hash});
-      return acc;
-    }, {});
-
-    // Update the assignment with the new file metadata
-    setAssignmentsState(prev => prev.map(a => {
-      if (a.id === assignment.id) {
-        return {
-          ...a,
-          files: a.files.map(f => {
-            const updatedFile = filesAndChunksGroupByFile[f.path]?.file;
-            return updatedFile || f;
-          })
-        };
-      }
-      return a;
-    }));
+    // const filesAndChunks = [];
+    // for (let [idx, [file, inFileChunkIdx]] of assignment.folder!.chunkIdxToFile) {
+    //   filesAndChunks.push({file, chunk: idx, inFileChunkIdx, hash: metadata.chunks[idx]});
+    // }
+    // const filesAndChunksGroupByFile = filesAndChunks.reduce<Record<string, {
+    //   file: FileMetadata,
+    //   chunks: Array<{chunk: number, inFileChunkIdx: number, hash: string}>
+    // }>>((acc, {file, chunk, inFileChunkIdx, hash}) => {
+    //   if (!acc[file.path]) {
+    //     acc[file.path] = { file, chunks: [] };
+    //   }
+    //   acc[file.path].chunks.push({chunk, inFileChunkIdx, hash});
+    //   return acc;
+    // }, {});
+  
+    // console.log('filesAndChunksGroupByFile', filesAndChunksGroupByFile);
+    // // Update the assignment with the new file metadata
+    // setAssignmentsState(prev => prev.map(a => {
+    //   if (a.id === assignment.id) {
+    //     console.log('finalIndexHash', finalIndexHash);
+    //     return {
+    //       ...a,
+    //       files: a.files.map(f => {
+    //         const updatedFile = filesAndChunksGroupByFile[f.path]?.file;
+    //         return updatedFile || f;
+    //       }),
+    //       arpId: finalIndexHash
+    //     };
+    //   }
+    //   return a;
+    // }));
 
     const response = await fetch(`${placement.provider}/verify`, {
       method: 'POST',
@@ -785,7 +795,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           await processPlacementRef.current?.(placement);
           updateAssignmentProgress(placement.assignmentId);
         }
-      }, { concurrency: 3 }); // Adjust concurrency as needed
+      }, { concurrency: 1 }); // Adjust concurrency as needed
       
       // Remove processed placements from the queue
       placementQueueRef.current = placementQueueRef.current.filter(

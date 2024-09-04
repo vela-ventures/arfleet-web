@@ -180,7 +180,18 @@ export default function FileContentViewer() {
       }
 
       console.log({file})
-      const arpReader = new ArpReader(file.arpId, placement);
+
+      let arpId = file.arpId;
+      if (!arpId) {
+        if (file.arp) {
+          arpId = file.arp.chunkHashes[0];
+          console.log('arpId', arpId);
+        } else {
+          throw new Error('ARP Id is not set');
+        }
+      }
+
+      const arpReader = new ArpReader(arpId, placement);
       await arpReader.init();
       console.log('arpReader', arpReader);
 
