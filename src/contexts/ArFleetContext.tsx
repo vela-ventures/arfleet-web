@@ -14,7 +14,7 @@ import { arfleetPrivateHash, createSalt, encKeyFromMasterKeyAndSalt } from '../h
 import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
 import { Sliceable, SliceParts } from '../helpers/sliceable';
-import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from '@/helpers/aes';
+import { AES_IV_BYTE_LENGTH, AESContainerReader, AESEncryptedContainer } from '@/helpers/aes';
 import { createFolder, Folder } from '@/helpers/folder';
 import { PlacementBlob } from '@/helpers/placementBlob';
 import {produce} from 'immer';
@@ -724,7 +724,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return chunkHashHex;
   };
 
-  const tryToRead = async (placement: Placement, finalHash: string) => {
+  const tryToRead = async (placement: Placement, finalHash: string, masterKey: Uint8Array) => {
     // ask provider to get this chunk
     const arp = new ArpReader(finalHash, placement);
     await arp.init();
@@ -734,7 +734,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await diread.init();
     console.log('diread', diread);
 
-    const dataItemDecrypted = new DataItemReader(diread);
+    const aesread = new AESContainerReader(diread, masterKey);
+    await aesread.init();
+    // console.log('aesread', aesread);
+
+    const dataItemDecrypted = new DataItemReader(aesread);
     await dataItemDecrypted.init();
 
     const data = await dataItemDecrypted.slice(0, dataItemDecrypted.dataLength);
@@ -757,7 +761,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await loremDi.init();
     console.log('loremDi', loremDi);
 
-    const loremData = await loremDi.slice(0, loremDi.dataLength);
+    const loremAesread = new AESContainerReader(loremDi, masterKey);
+    await loremAesread.init();
+    // console.log('loremAesread', loremAesread);
+
+    const loremDataItemDecrypted = new DataItemReader(loremAesread);
+    await loremDataItemDecrypted.init();
+
+    const loremData = await loremDataItemDecrypted.slice(0, loremDataItemDecrypted.dataLength);
     console.log('loremData', bufferToAscii(loremData));
   };
 
@@ -773,7 +784,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
     console.log('FINAL INDEX HASH:', finalIndexHash);
-    await tryToRead(placement, finalIndexHash);
+    await tryToRead(placement, finalIndexHash, assignment.folder!.masterKey);
 
     // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
     
@@ -912,14 +923,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!masterKey) throw new Error('Master key not found');
       const iv = createSalt(AES_IV_BYTE_LENGTH);
       const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
-      const aesContainer: AESEncryptedContainer = new PassthroughAES(
+      const aesContainer = new AESEncryptedContainer(
         dataItem,
         salt,
         secretKey,
         iv
       );
 
-      // const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
+      const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
 
       // const folder = await createFolder();
       // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
@@ -989,8 +1000,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (fileMetadata.encryptedDataItem) throw new Error("Encrypted data item already set");
       fileMetadata.aesContainer = aesContainer;
       // fileMetadata.encryptedDataItem = encryptedDataItem;
-      if (fileMetadata.encryptedDataItem) throw new Error("Encrypted data item already set");
-      fileMetadata.encryptedDataItem = dataItem; // todo: fix!
+      fileMetadata.encryptedDataItem = encryptedDataItem;
       updatedFiles.push(fileMetadata);
 
       // const dataItemBin = await dataItem?.exportBinaryHeader();

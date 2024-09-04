@@ -84,43 +84,49 @@ export class Folder extends Sliceable {
 
     async buildFile(file: FileMetadata) {
         let fileChunkStart = this.chunksConsumed;
+        console.log('buildFile', {file, fileChunkStart});
         const byteLength = await file.encryptedDataItem!.getByteLength();
         this.partsBeingBuilt.push([byteLength, this.sliceThroughFileDataItem.bind(this, file)] as SlicePart);
 
         await this.pushZeroes(this.partsBeingBuilt, byteLength);
 
         const totalChunks = Math.ceil(byteLength / FOLDER_FILE_BOUNDARY);
-        for(let q = 0; q < totalChunks; q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ file, q ]);
+        console.log({totalChunks, file, fileChunkStart, byteLength});
+        for(let q = 0; q < totalChunks; q++) { this.chunkIdxToFile.set(this.chunksConsumed, [ file, q ]); this.chunksConsumed++; }
 
         this.addArp(file, byteLength, fileChunkStart);
     }
 
     async addArp(file: FileMetadata | DataItem, byteLength: number, fileChunkStart: number) {
-        let arp = new Arp(ArpType.ARP_RAW_DATA, byteLength, (async (fileChunkStart: number, hashIdx: number) => {
-            const [file, chunkIdx] = this.chunkIdxToFile.get(fileChunkStart + hashIdx)!;
-            // console.log('arp file', file, chunkIdx);
-            const hash = file.chunkHashes[chunkIdx];
+        let arp = new Arp(ArpType.ARP_RAW_DATA, byteLength, (async (cs: number, hashIdx: number) => {
+            const [file_, chunkIdx] = this.chunkIdxToFile.get(cs + hashIdx)!;
+            const hash = file_.chunkHashes[chunkIdx];
+            console.log('arp file', {file_, file, chunkIdx, hash, cs, hashIdx, chunkIdxToFile: this.chunkIdxToFile});
             if (!hash) {
-                console.log('Chunk hash is not set, asking for arp hash of file:', file, chunkIdx);
+                console.log('Chunk hash is not set, asking for arp hash of file:', file_, chunkIdx);
                 console.log('chunkIdxToFile:', this.chunkIdxToFile);
-                console.log('fileChunkStart:', fileChunkStart);
+                console.log('cs:', cs);
                 console.log('hashIdx:', hashIdx);
                 console.log('chunksConsumed:', this.chunksConsumed);
-                console.log(file.chunkHashes);
+                console.log(file_.chunkHashes);
                 throw new Error('Chunk hash is not set, asking for arp hash of file');
             }
             return hash;
         }).bind(this, fileChunkStart));
+        console.log('bound arp', {arp, file, fileChunkStart});
         let arpByteLength = await arp.getByteLength();
 
         this.partsBeingBuilt.push([arpByteLength, this.sliceThroughFileDataItem.bind(this, arp)]);
         await this.pushZeroes(this.partsBeingBuilt, arpByteLength);
-        fileChunkStart = this.chunksConsumed;
-        for(let q = 0; q < Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY); q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ arp, q ]);
+        fileChunkStart = this.chunksConsumed; // fileChunkStart is now the start of the arp
+        console.log('arp byte length', arpByteLength);
+        console.log('advancing', Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY));
+        for(let q = 0; q < Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY); q++) { this.chunkIdxToFile.set(this.chunksConsumed, [ arp, q ]); this.chunksConsumed++; }
+        console.log('advanced to', this.chunksConsumed);
 
         while(arpByteLength > FOLDER_FILE_BOUNDARY) {
-            arp = new Arp(ArpType.ARP_NESTED, arpByteLength, (async (fileChunkStart: number, hashIdx: number) => {
-                const [a, chunkIdx] = this.chunkIdxToFile.get(fileChunkStart + hashIdx)!;
+            arp = new Arp(ArpType.ARP_NESTED, arpByteLength, (async (cs: number, hashIdx: number) => {
+                const [a, chunkIdx] = this.chunkIdxToFile.get(cs + hashIdx)!;
                 // console.log('a', a, a.chunkHashes);
                 const chunkHash = a.chunkHashes[chunkIdx];
                 if (!chunkHash) throw new Error('Chunk hash is not set, asking for hash of nested arp:' + a + ' ' + chunkIdx);
@@ -131,7 +137,7 @@ export class Folder extends Sliceable {
             this.partsBeingBuilt.push([arpByteLength, this.sliceThroughFileDataItem.bind(this, arp)]);
             await this.pushZeroes(this.partsBeingBuilt, arpByteLength);
             fileChunkStart = this.chunksConsumed;
-            for(let q = 0; q < Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY); q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ arp, q ]);
+            for(let q = 0; q < Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY); q++) { this.chunkIdxToFile.set(this.chunksConsumed, [ arp, q ]); this.chunksConsumed++; }
         }
 
         file.arp = arp;
@@ -149,7 +155,7 @@ export class Folder extends Sliceable {
         const salt = createSalt();
         const iv = createSalt(AES_IV_BYTE_LENGTH);
         const secretKey = await encKeyFromMasterKeyAndSalt(this.masterKey, salt);  
-        const encContainer = new PassthroughAES(manifestDataItem, salt, secretKey, iv);
+        const encContainer = new AESEncryptedContainer(manifestDataItem, salt, secretKey, iv);
 
         this.encryptedManifestDataItem = await this.dataItemFactory.createDataItemWithSliceable(encContainer, [
             {name: "ArFleet-DataItem-Type", value: "EncryptedAESPathManifest" }
@@ -161,7 +167,7 @@ export class Folder extends Sliceable {
         this.partsBeingBuilt.push([encManifestByteLength, this.sliceThroughFileDataItem.bind(this, this.encryptedManifestDataItem)]);
         await this.pushZeroes(this.partsBeingBuilt, encManifestByteLength);
         fileChunkStart = this.chunksConsumed;
-        for(let q = 0; q < Math.ceil(encManifestByteLength / FOLDER_FILE_BOUNDARY); q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ this.encryptedManifestDataItem, q ]);
+        for(let q = 0; q < Math.ceil(encManifestByteLength / FOLDER_FILE_BOUNDARY); q++) { this.chunkIdxToFile.set(this.chunksConsumed, [ this.encryptedManifestDataItem, q ]); this.chunksConsumed++; }
 
         //
 

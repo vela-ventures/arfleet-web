@@ -18,6 +18,8 @@ export enum ArpType {
 
 const ARP_CHUNK_SIZE = (PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE) * RSA_UNDERLYING_CHUNK_SIZE;
 
+const USE_BINARY = true;
+
 export class Arp extends Sliceable {
     type: ArpType;
     owner: string|null;
@@ -80,22 +82,27 @@ export class Arp extends Sliceable {
         }
 
         // Data hashes
+        const hashLength = (USE_BINARY) ? 32 : 32 * 2;
         const numHashes = Math.ceil(this.innerByteLength / ARP_CHUNK_SIZE);
-        parts.push([32 * numHashes, async (start: number, end: number) => {
+        parts.push([hashLength * numHashes, async (start: number, end: number) => {
             if (start > end) throw new Error('Invalid start and end');
             if (start < 0 || end < 0) throw new Error('Invalid start and end');
-            const first = start / 32;
-            const last = (end-1) / 32;
+            const first = start / hashLength;
+            const last = (end-1) / hashLength;
             const total = last - first + 1;
-            let buf = new Uint8Array(total * 32);
+            let buf = new Uint8Array(total * hashLength);
             let c = 0;
             for (let i = first; i <= last; i++) {
                 const hash: string = await this.hashes(i);
-                buf.set(new Uint8Array(hexToBuffer(hash)), c * 32);
+                if (USE_BINARY) {
+                    buf.set(new Uint8Array(hexToBuffer(hash)), c * hashLength);
+                } else {
+                    buf.set(new Uint8Array(stringToBuffer(hash)), c * hashLength);
+                }
                 c++;
             }
             
-            const firstOffset = start % 32;
+            const firstOffset = start % hashLength;
             const sliceLen = end - start;
 
             return buf.slice(firstOffset, sliceLen);
@@ -114,6 +121,7 @@ export class ArpReader extends SliceableReader {
     placement: Placement;
     initialized: boolean;
     manifest: Uint8Array | ArpReader | null;
+    cacheChunks: Map<number, Uint8Array>;
 
     constructor(hash: string|ArpReader, placement: Placement) {
         super();
@@ -125,6 +133,7 @@ export class ArpReader extends SliceableReader {
         this.placement = placement;
         this.initialized = false;
         this.manifest = typeof hash === 'string' ? null : hash;
+        this.cacheChunks = new Map<number, Uint8Array>();
     }
 
     async slice(start: number, end: number): Promise<Uint8Array> {
@@ -156,11 +165,26 @@ export class ArpReader extends SliceableReader {
             }
 
             console.log('downloading chunk', chunkHash);
+            let chunk = this.cacheChunks.get(startChunkIdx + i);
 
-            const chunk = await this.placement.downloadChunk(chunkHash);
+            if (!chunk) {
+                chunk = await this.placement.downloadChunk(chunkHash);
+                this.cacheChunks.set(startChunkIdx + i, chunk);
+            }
             console.log('downloaded', bufferToAscii(chunk));
 
             buf.set(chunk, i * this.chunkSize);
+        }
+
+        // Keep only 64 chunks in memory
+        if (this.cacheChunks.size > 64) {
+            const keysToDelete = Array.from(this.cacheChunks.keys())
+                .sort((a, b) => a - b)
+                .slice(0, this.cacheChunks.size - 64);
+            
+            for (const key of keysToDelete) {
+                this.cacheChunks.delete(key);
+            }
         }
 
         const firstOffset = start % this.chunkSize;
@@ -182,7 +206,9 @@ export class ArpReader extends SliceableReader {
             await this.manifest!.init();
         } else {
             if (!this.hash) throw new Error('ARP hash is not set');
+            console.log('downloading arp manifest', this.hash);
             this.manifest = await this.placement.downloadChunk(this.hash);
+            console.log('downloaded arp manifest', this.hash, bufferToAscii(this.manifest));
         }
 
         // verify header
@@ -200,9 +226,10 @@ export class ArpReader extends SliceableReader {
         this.innerByteLength = innerByteLength;
 
         const numHashes = Math.ceil(this.innerByteLength / this.chunkSize);
+        const hashLength = (USE_BINARY) ? 32 : 32 * 2;
         for (let i = 0; i < numHashes; i++) {
-            const chunkHash = await this.manifest!.slice(34 + i * 32, 34 + (i+1) * 32);
-            this.chunkHashes[i] = bufferToHex(chunkHash);
+            const chunkHash = await this.manifest!.slice(34 + i * hashLength, 34 + (i+1) * hashLength);
+            this.chunkHashes[i] = (USE_BINARY) ? bufferToHex(chunkHash) : bufferToString(chunkHash);
         }
     }
 }

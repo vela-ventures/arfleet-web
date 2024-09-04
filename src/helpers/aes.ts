@@ -1,6 +1,7 @@
-import { longTo8ByteArray } from "./buf";
+import { byteArrayToLong, concatBuffers, longTo8ByteArray } from "./buf";
+import { encKeyFromMasterKeyAndSalt } from "./encrypt";
 import { EncryptedContainer } from "./encryptedContainer";
-import { Sliceable, SliceParts } from "./sliceable";
+import { Sliceable, SliceableReader, SliceParts } from "./sliceable";
 
 export const AES_IV_BYTE_LENGTH = 16;
 
@@ -9,6 +10,8 @@ const AES_CHUNK_SIZE = 256; // 2048;
 const AES_OVERHEAD = 16;
 
 const AES_UNDERLYING_CHUNK_SIZE = AES_CHUNK_SIZE - AES_OVERHEAD;
+
+const AES_SALT_BYTE_LENGTH = 32;
 
 const log = (...args: any[]) => (false) ? console.log('[AES]', ...args) : null;
 
@@ -90,7 +93,7 @@ export class AESEncryptedContainer extends EncryptedContainer {
     }
 
     async buildParts(): Promise<SliceParts> {
-        const magicString = "arf::enc";
+        const magicString = "arf::aes";
         const parts: SliceParts = [];
         parts.push([magicString.length, new TextEncoder().encode(magicString)]);
         parts.push([8, longTo8ByteArray(await this.inner!.getByteLength())]); // underlying byte length
@@ -150,4 +153,110 @@ export const decryptAes = async (fileArrayBuffer: Uint8Array, key: Uint8Array, i
     }, secretKey, fileArrayBuffer);
 
     return new Uint8Array(plaintextArrayBuffer);
+}
+
+export class AESContainerReader extends SliceableReader {
+    ciphertext: SliceableReader;
+    dataLength: number;
+    initialized: boolean;
+    salt: Uint8Array;
+    iv: Uint8Array;
+    key: Uint8Array;
+    masterKey: Uint8Array;
+    dataStartPos: number;
+    constructor(ciphertext: SliceableReader, masterKey: Uint8Array) {
+        super();
+        this.ciphertext = ciphertext;
+        this.dataLength = 0;
+        this.initialized = false;
+        this.salt = new Uint8Array();
+        this.iv = new Uint8Array();
+        this.key = new Uint8Array();
+        this.masterKey = masterKey;
+        this.dataStartPos = 0;
+    }
+
+    async init() {
+        if (this.initialized) return;
+        this.initialized = true;
+
+        await this.ciphertext.init();
+
+        const header = await this.ciphertext.slice(0, 8 + 8 + AES_SALT_BYTE_LENGTH + AES_IV_BYTE_LENGTH);
+        const magicString = new TextDecoder().decode(header.slice(0, 8));
+        if (magicString !== "arf::aes") {
+            throw new Error(`Invalid magic string: ${magicString}, expected "arf::aes"`);
+        }
+
+        const underlyingByteLength = byteArrayToLong(header.slice(8, 16));
+        this.dataLength = underlyingByteLength;
+
+        this.salt = header.slice(16, 16 + AES_SALT_BYTE_LENGTH);
+        this.iv = header.slice(16 + AES_SALT_BYTE_LENGTH, 16 + AES_SALT_BYTE_LENGTH + AES_IV_BYTE_LENGTH);
+        
+        this.key = await encKeyFromMasterKeyAndSalt(this.masterKey, this.salt);
+
+        this.dataStartPos = 8 + 8 + AES_SALT_BYTE_LENGTH + AES_IV_BYTE_LENGTH;
+    }
+
+    async slice(start: number, end: number) {
+        if (!this.initialized) {
+            throw new Error('AESContainerReader is not initialized');
+        }
+
+        if (start < 0 || end < 0 || start > end) throw new Error(`Invalid slice: start=${start}, end=${end}`);
+        if (start >= this.dataLength) throw new Error(`Invalid slice: start=${start} is greater than or equal to data length=${this.dataLength}`);
+        if (end > this.dataLength) throw new Error(`Invalid slice: end=${end} is greater than data length=${this.dataLength}`);
+
+        const startChunkIdx = Math.floor(start / AES_UNDERLYING_CHUNK_SIZE);
+        const finalChunkIdx = Math.floor((end-1) / AES_UNDERLYING_CHUNK_SIZE);
+
+        let ciphertextChunks: Uint8Array[] = [];
+        let result: Uint8Array[] = [];
+        for (let chunkIdx = startChunkIdx; chunkIdx <= finalChunkIdx; chunkIdx++) {
+            let thisCiphertext: Uint8Array;
+            if (ciphertextChunks[chunkIdx]) {
+                thisCiphertext = ciphertextChunks[chunkIdx];
+            } else {
+                thisCiphertext = await this.ciphertext.slice(this.dataStartPos + chunkIdx * AES_CHUNK_SIZE, this.dataStartPos + (chunkIdx + 1) * AES_CHUNK_SIZE);
+                ciphertextChunks[chunkIdx] = thisCiphertext;
+            }
+
+            let prevCiphertext: Uint8Array | null = null;
+            if (chunkIdx === 0) {
+                prevCiphertext = new Uint8Array(AES_CHUNK_SIZE).fill(0);
+            } else {
+                if (ciphertextChunks[chunkIdx - 1]) {
+                    prevCiphertext = ciphertextChunks[chunkIdx - 1];
+                } else {
+                    prevCiphertext = await this.ciphertext.slice(this.dataStartPos + (chunkIdx - 1) * AES_CHUNK_SIZE, this.dataStartPos + chunkIdx * AES_CHUNK_SIZE);
+                    ciphertextChunks[chunkIdx - 1] = prevCiphertext;
+                }
+            }
+            prevCiphertext = prevCiphertext.slice(-AES_UNDERLYING_CHUNK_SIZE);
+
+            const plaintextChunk = await decryptAes(thisCiphertext, this.key, this.iv);
+
+            // make sure it's correct size
+            if (plaintextChunk.length !== AES_UNDERLYING_CHUNK_SIZE) {
+                throw new Error(`Invalid plaintext chunk length: ${plaintextChunk.length}, expected ${AES_UNDERLYING_CHUNK_SIZE}`);
+            }
+
+            // XOR with previous chunk ciphertext
+            const chunkXored = new Uint8Array(plaintextChunk.length);
+            for (let i = 0; i < plaintextChunk.length; i++) {
+                chunkXored[i] = plaintextChunk[i] ^ prevCiphertext[i];
+            }
+
+            result.push(chunkXored);
+        }
+
+        const concatenated = concatBuffers(result);
+
+        const startOffset = start % AES_UNDERLYING_CHUNK_SIZE;
+        const len = end - start;
+
+        return concatenated.slice(startOffset, startOffset + len);
+    }
+
 }
