@@ -1,6 +1,6 @@
 import { b64UrlToBuffer, bufferTob64Url } from "./encodeUtils";
 import { serializeTags, Tag } from "./tags";
-import { stringToBuffer, concatBuffers, longTo8ByteArray, byteArrayToLong, bufferToString, bufferToAscii } from "./buf";
+import { stringToBuffer, concatBuffers, longTo8ByteArray, byteArrayToLong, bufferToString, bufferToAscii, bufferToHex } from "./buf";
 import { Hasher, HashType, makeHasher, sha256, sha384 } from "./hash";
 import { deepHash, deepHashChunks, DeepHashPointer } from "./deephashmod";
 import { downloadUint8ArrayAsFile } from "./extra";
@@ -131,7 +131,15 @@ export class DataItem extends Sliceable {
     async setSignature(signature: Uint8Array): Promise<void> {
       const dataItemId = bufferTob64Url(await sha256(signature));
 
-      if (this.signature) throw new Error("Signature already set");
+      if (this.signature) {
+        // compare signatures
+        if (bufferToHex(signature) !== bufferToHex(this.signature)) {
+          // console.log("signature already set", bufferToHex(signature), bufferToHex(this.signature));
+          // throw new Error("Signature already set");
+          // Quitely ignore
+          return;
+        }
+      }
       this.signature = signature;
       this.dataItemId = dataItemId;
     }

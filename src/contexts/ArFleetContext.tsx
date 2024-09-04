@@ -25,6 +25,7 @@ import { Passthrough } from '@/helpers/passthrough';
 import { PassthroughAES } from '@/helpers/passthroughAES';
 import { downloadUint8ArrayAsFile } from '@/helpers/extra';
 import { Arp, ArpReader } from '@/helpers/arp';
+import { Promise as BluebirdPromise } from 'bluebird';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -109,7 +110,7 @@ export class Placement {
       provider: this.provider,
       status: this.status,
       progress: this.progress,
-      chunks: this.chunks,
+      // chunks: this.chunks,
     };
   }
 
@@ -774,22 +775,28 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const processPlacementQueue = useCallback(async () => {
     if (processingPlacement.current) return;
     
-    while (placementQueueRef.current.length > 0) {
-      processingPlacement.current = true;
-      const placement = placementQueueRef.current[0];
+    processingPlacement.current = true;
+    
+    try {
+      // Process all placements in parallel
+      await BluebirdPromise.map(placementQueueRef.current, async (placement) => {
+        if (placement.status !== 'completed' && placement.status !== 'error') {
+          console.log(`Processing placement ${placement.id}, current status: ${placement.status}`);
+          await processPlacementRef.current?.(placement);
+          updateAssignmentProgress(placement.assignmentId);
+        }
+      }, { concurrency: 3 }); // Adjust concurrency as needed
       
-      if (placement.status !== 'completed' && placement.status !== 'error') {
-        console.log(`Processing placement ${placement.id}, current status: ${placement.status}`);
-        await processPlacementRef.current?.(placement);
-        
-        updateAssignmentProgress(placement.assignmentId);
-      } else {
-        placementQueueRef.current.shift();
-      }
-      
+      // Remove processed placements from the queue
+      placementQueueRef.current = placementQueueRef.current.filter(
+        p => p.status !== 'completed' && p.status !== 'error'
+      );
+    } catch (error) {
+      console.error('Error processing placements:', error);
+    } finally {
       processingPlacement.current = false;
     }
-  }, [updatePlacementStatus, updateAssignmentProgress]);
+  }, [updateAssignmentProgress]);
 
   const processAssignment = async (assignment: StorageAssignment) => {
     setAssignmentsState(prev => prev.map(a => 
@@ -841,6 +848,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const rsaKeyPair = await generateRSAKeyPair();
 
       const rsaContainer = new RSAContainer(rsaKeyPair, folder);
+      await rsaContainer.initialize();
       console.log('container', rsaContainer);
 
       const placementBlob = new PlacementBlob(rsaContainer);

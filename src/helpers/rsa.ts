@@ -23,6 +23,7 @@ export class RSAContainer extends EncryptedContainer {
   rsaKeyPair: CryptoKeyPair;
   private cachedRsaKey: RsaKey | null = null;
   private isInitialized: boolean = false;
+  private encryptor: RsaEncryptor | null = null;
 
   constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
     super();
@@ -34,9 +35,10 @@ export class RSAContainer extends EncryptedContainer {
     this.log = log;
   }
 
-  private async initialize() {
+  async initialize() {
     if (!this.isInitialized) {
       await initRsa();
+      this.encryptor = new RsaEncryptor();
       this.isInitialized = true;
     }
   }
@@ -82,7 +84,11 @@ export class RSAContainer extends EncryptedContainer {
         xoredChunk[j] = fullyPaddedChunk[j] ^ previousEncryptedChunk[j];
       }
 
-      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
+      if (xoredChunk.slice(1).byteLength > RSA_UNDERLYING_CHUNK_SIZE) {
+        throw new Error(`Chunk size (${xoredChunk.slice(1).byteLength}) exceeds RSA_UNDERLYING_CHUNK_SIZE (${RSA_UNDERLYING_CHUNK_SIZE})`);
+      }
+
+      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey, this.encryptor!); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
 
       if (encryptedChunk.byteLength !== RSA_ENCRYPTED_CHUNK_SIZE) {
         throw new Error(`Encrypted chunk must be ${RSA_ENCRYPTED_CHUNK_SIZE} bytes but was ${encryptedChunk.byteLength}`);
@@ -150,7 +156,7 @@ export class RSAContainer extends EncryptedContainer {
     this.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
 
     const rsaKey = await this.getRsaKey();
-    const encryptedChunk = await rsaEncrypt(chunk, rsaKey);
+    const encryptedChunk = await rsaEncrypt(chunk, rsaKey, this.encryptor!);
 
     // return chunk;
 
@@ -206,11 +212,8 @@ interface RsaKey {
   bits: number;   // key size in bits
 }
 
-let encryptor: RsaEncryptor | null = null;
-
 export async function initRsa() {
   await init();
-  encryptor = new RsaEncryptor();
 }
 
 export async function keyPairToRsaKey(keyPair: CryptoKeyPair): Promise<RsaKey> {
@@ -270,10 +273,7 @@ export async function generateRsaKey(bits: number, exponent: number = 65537): Pr
   return keyPairToRsaKey(keyPair);
 }
 
-export async function rsaEncrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Array> {
-  if (!encryptor) {
-      throw new Error("RSA not initialized. Call initRsa() first.");
-  }
+export async function rsaEncrypt(data: Uint8Array, key: RsaKey, encryptor: RsaEncryptor): Promise<Uint8Array> {
   const maxSize = key.bits / 8 - RSA_PADDING;
   if (data.length > maxSize) {
     throw new Error(`Data is too long: ${data.length} bytes, maximum is ${maxSize} bytes`);

@@ -179,6 +179,7 @@ export default function FileContentViewer() {
         return;
       }
 
+      console.log({file})
       const arpReader = new ArpReader(file.arpId, placement);
       await arpReader.init();
       console.log('arpReader', arpReader);
