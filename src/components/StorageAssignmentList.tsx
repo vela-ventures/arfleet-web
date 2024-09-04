@@ -42,7 +42,7 @@ export default function StorageAssignmentList({
               {assignment.placements.slice(0, 3).map((placement) => (
                 <Progress 
                   key={placement.id}
-                  value={placement.progress} 
+                  value={placement.status === 'completed' ? 100 : placement.progress} 
                   className="h-1" 
                   indicatorClassName={cn(
                     "transition-all",

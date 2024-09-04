@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { CloudUpload, FolderUp } from 'lucide-react';
 import { cn } from "@/lib/utils";
@@ -103,6 +103,12 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
       </div>
     );
   }
+
+  useEffect(() => {
+    // This effect will run whenever the assignments state changes
+    console.log('Assignments updated:', assignments);
+    // You can add any logic here that needs to run when assignments change
+  }, [assignments]);
 
   return (
     <div {...getRootProps()} className="flex flex-col relative">

@@ -516,6 +516,10 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
           placement.chunks[chunkIndex] = chunkHashHex;
 
+          // Update the assignment progress
+          const totalProgress = assignment.placements.reduce((sum, p) => sum + p.progress, 0);
+          assignment.progress = totalProgress / assignment.placements.length;
+
           // Create a new StorageAssignment instance to ensure we have the serialize method
           const updatedAssignment = new StorageAssignment({
             ...assignment,
