@@ -14,7 +14,7 @@ import { arfleetPrivateHash, createSalt, encKeyFromMasterKeyAndSalt } from '../h
 import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
 import { Sliceable, SliceParts } from '../helpers/sliceable';
-import { AES_IV_BYTE_LENGTH, AESContainerReader, AESEncryptedContainer } from '@/helpers/aes';
+import { AES_IV_BYTE_LENGTH, AESContainerReader, AESEncryptedContainer, encryptAes } from '@/helpers/aes';
 import { createFolder, Folder } from '@/helpers/folder';
 import { PlacementBlob } from '@/helpers/placementBlob';
 import {produce} from 'immer';
@@ -439,10 +439,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (!arConnected) return;
     console.log('experiment')
+
+    // alert();
+
     // if (globalThis.ranExp) return;
     // globalThis.ranExp = true;
     // runExp();
-    // run();
+    run();
 
     // const data = "hello";
     // const rsa = new RSAContainer()

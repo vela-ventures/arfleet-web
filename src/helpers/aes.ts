@@ -5,15 +5,15 @@ import { Sliceable, SliceableReader, SliceParts } from "./sliceable";
 
 export const AES_IV_BYTE_LENGTH = 16;
 
-const AES_CHUNK_SIZE = 256; // 2048;
+const AES_CHUNK_SIZE = 256;
 
-const AES_OVERHEAD = 16;
+const AES_OVERHEAD = 1;
 
 const AES_UNDERLYING_CHUNK_SIZE = AES_CHUNK_SIZE - AES_OVERHEAD;
 
 const AES_SALT_BYTE_LENGTH = 32;
 
-const log = (...args: any[]) => (false) ? console.log('[AES]', ...args) : null;
+const log = (...args: any[]) => (true) ? console.log('[AES]', ...args) : null;
 
 export class AESEncryptedContainer extends EncryptedContainer {
     salt: Uint8Array;
@@ -54,8 +54,8 @@ export class AESEncryptedContainer extends EncryptedContainer {
             previousChunk = new Uint8Array(this.underlyingChunkSize).fill(0);
         }
 
-        const iv = this.iv;
-        const chain = previousChunk!.slice(-this.underlyingChunkSize);
+        const iv = (chunkIdx === 0) ? this.iv : previousChunk!.slice(-AES_IV_BYTE_LENGTH);
+        // const chain = previousChunk!.slice(-this.underlyingChunkSize);
 
         const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
 
@@ -68,12 +68,13 @@ export class AESEncryptedContainer extends EncryptedContainer {
 
         this.log("AES plaintext chunk", chunk);
 
-        // XOR with previous chunk ciphertext
-        const chunkXored = new Uint8Array(chunk.length);
-        for (let i = 0; i < chunk.length; i++) {
-            chunkXored[i] = chunk[i] ^ chain[i];
-        }
-
+        // // XOR with previous chunk ciphertext
+        // const chunkXored = new Uint8Array(chunk.length);
+        // for (let i = 0; i < chunk.length; i++) {
+        //     chunkXored[i] = chunk[i] ^ chain[i];
+        // }
+        const chunkXored = chunk;
+        
         const encryptedChunk = await new Uint8Array(await encryptAes(chunkXored, this.secretKey, iv, isLastChunk));
         this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
         
@@ -233,20 +234,23 @@ export class AESContainerReader extends SliceableReader {
                     ciphertextChunks[chunkIdx - 1] = prevCiphertext;
                 }
             }
-            prevCiphertext = prevCiphertext.slice(-AES_UNDERLYING_CHUNK_SIZE);
+            // prevCiphertext = prevCiphertext.slice(-AES_UNDERLYING_CHUNK_SIZE);
 
-            const plaintextChunk = await decryptAes(thisCiphertext, this.key, this.iv);
+            const iv = (chunkIdx === 0) ? this.iv : prevCiphertext.slice(-AES_IV_BYTE_LENGTH);
+
+            const plaintextChunk = await decryptAes(thisCiphertext, this.key, iv);
 
             // make sure it's correct size
             if (plaintextChunk.length !== AES_UNDERLYING_CHUNK_SIZE) {
                 throw new Error(`Invalid plaintext chunk length: ${plaintextChunk.length}, expected ${AES_UNDERLYING_CHUNK_SIZE}`);
             }
 
-            // XOR with previous chunk ciphertext
-            const chunkXored = new Uint8Array(plaintextChunk.length);
-            for (let i = 0; i < plaintextChunk.length; i++) {
-                chunkXored[i] = plaintextChunk[i] ^ prevCiphertext[i];
-            }
+            // // XOR with previous chunk ciphertext
+            // const chunkXored = new Uint8Array(plaintextChunk.length);
+            // for (let i = 0; i < plaintextChunk.length; i++) {
+            //     chunkXored[i] = plaintextChunk[i] ^ prevCiphertext[i];
+            // }
+            const chunkXored = plaintextChunk;
 
             result.push(chunkXored);
         }
