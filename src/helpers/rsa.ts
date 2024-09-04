@@ -69,6 +69,7 @@ export class RSAContainer extends EncryptedContainer {
     const rsaChunksPerPlacementChunk = PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE;
 
     const encryptedChunks = [];
+    let previousEncryptedChunk: Uint8Array = new Uint8Array(RSA_ENCRYPTED_CHUNK_SIZE).fill(0x00);
     for (let i = 0; i < rsaChunksPerPlacementChunk; i++) {
       const rsaKey = await this.getRsaKey();
 
@@ -76,14 +77,23 @@ export class RSAContainer extends EncryptedContainer {
       const sliceEnd = (i === rsaChunksPerPlacementChunk - 1) ? plainTextChunk.byteLength : sliceStart + RSA_UNDERLYING_CHUNK_SIZE;
 
       const paddedChunk = padRight(plainTextChunk.slice(sliceStart, sliceEnd), RSA_UNDERLYING_CHUNK_SIZE);
+      const fullyPaddedChunk = padLeft(paddedChunk, RSA_ENCRYPTED_CHUNK_SIZE);
 
-      const encryptedChunk = await rsaEncrypt(paddedChunk, rsaKey);
+      let xoredChunk = fullyPaddedChunk;
+      // Note: starting with 1! we don't touch the first 0x00 byte
+      for(let j = 1; j < RSA_ENCRYPTED_CHUNK_SIZE; j++) {
+        xoredChunk[j] = fullyPaddedChunk[j] ^ previousEncryptedChunk[j];
+      }
+
+      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
 
       if (encryptedChunk.byteLength !== RSA_ENCRYPTED_CHUNK_SIZE) {
         throw new Error(`Encrypted chunk must be ${RSA_ENCRYPTED_CHUNK_SIZE} bytes but was ${encryptedChunk.byteLength}`);
       }
 
       encryptedChunks.push(encryptedChunk);
+
+      previousEncryptedChunk = encryptedChunk;
     }
 
     const together = concatBuffers(encryptedChunks);
