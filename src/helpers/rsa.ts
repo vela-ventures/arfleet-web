@@ -24,9 +24,6 @@ export class RSAContainer extends EncryptedContainer {
   private cachedRsaKey: RsaKey | null = null;
   private isInitialized: boolean = false;
 
-  // rsaChunkHashes: Map<number, Uint8Array> = new Map();
-  // plaintextChunkHashes: Map<number, Uint8Array> = new Map();
-
   constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
     super();
     this.rsaKeyPair = rsaKeyPair;
@@ -65,13 +62,6 @@ export class RSAContainer extends EncryptedContainer {
     if (plainTextChunk.byteLength !== RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE) {
       throw new Error(`Plain text chunk must be ${RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE} bytes but was ${plainTextChunk.byteLength}`);
     }
-
-    // const plainTextChunkPaddedForHashing = padRight(plainTextChunk, RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE);
-    // if (! this.plaintextChunkHashes.has(c)) {
-    //   const plaintextHash = await sha256(plainTextChunkPaddedForHashing);
-    //   this.plaintextChunkHashes.set(c, plaintextHash);
-    //   // console.log('PLAINTEXT CHUNK HASH', c, bufferToHex(plaintextHash));
-    // }
 
     const rsaChunksPerPlacementChunk = PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE;
 
@@ -118,87 +108,22 @@ export class RSAContainer extends EncryptedContainer {
     let encryptedLengthLeft = await this.getEncryptedByteLength();
     // let decryptedLengthLeft = await this.inner!.getByteLength();
 
-    // // How many RSA chunks are needed to encrypt the file?
-    // const rsaChunkCount = Math.ceil(decryptedLengthLeft / RSA_UNDERLYING_CHUNK_SIZE);
-
     // let break_out = false;
     let c = 0;
     while(encryptedLengthLeft > 0) {
-      // // 1 rsa chunk out of 64
-      // const magicString = "arf::rsa";
-      // parts.push([magicString.length, new TextEncoder().encode(magicString)]);
-
-      // const spaceForEncryptedRSA = PLACEMENT_BLOB_CHUNK_SIZE - RSA_HEADER_SIZE;
-      // parts.push([8, longTo8ByteArray((encryptedLengthLeft >= spaceForEncryptedRSA) ? spaceForEncryptedRSA : encryptedLengthLeft)]);
-      // const zeroLen = RSA_ENCRYPTED_CHUNK_SIZE - 8 - 8;
-      // parts.push([zeroLen, this.zeroes.bind(this, 0, zeroLen)]);
-
-      // parts.push([await this.getEncryptedByteLength(), ((start: number, end: number) => {
-      //   return this.newEncryptedSlice(start, end);
-      // }).bind(this, 0, )]);
-
       let encryptedPlacementLen = PLACEMENT_BLOB_CHUNK_SIZE;
       parts.push([encryptedPlacementLen, this.encryptPlacementChunk.bind(this, c)]);
 
       c++;
       encryptedLengthLeft -= encryptedPlacementLen;
-      // decryptedLengthLeft -= PLACEMENT_BLOB_CHUNK_SIZE;
 
       if (encryptedLengthLeft <= 0) {
-        // break_out = true;
         break;
       }
-          
-      //   (async (c: number, boundLen: number, start: number, end: number) => {
-      //   const encryptedChunk = await this.encryptChunk(c);
-      //   console.log('encryptedChunk', 'c=', c, 'encryptedChunk', encryptedChunk, 'slicing', start, end);
-      //   return encryptedChunk.slice(start, end);
-      // }).bind(this, c, encryptedLen) ]);
-
-
-      // for(let i = 0; i < 64; i++) {
-      //   console.log('INNER LOOP', {c, i, encryptedLengthLeft, decryptedLengthLeft});
-      //   // let len = (decryptedLengthLeft >= RSA_UNDERLYING_CHUNK_SIZE) ? RSA_UNDERLYING_CHUNK_SIZE : decryptedLengthLeft;
-      //   let encryptedLen = RSA_ENCRYPTED_CHUNK_SIZE;
-      //   let decryptedLen = RSA_UNDERLYING_CHUNK_SIZE;
-      //   parts.push([encryptedLen, (async (c: number, boundLen: number, start: number, end: number) => {
-      //     const encryptedChunk = await this.encryptChunk(c);
-      //     console.log('encryptedChunk', 'c=', c, 'encryptedChunk', encryptedChunk, 'slicing', start, end);
-      //     return encryptedChunk.slice(start, end);
-      //   }).bind(this, c, encryptedLen) ]);
-      //   c++;
-      //   // decryptedLengthLeft -= len;
-      //   encryptedLengthLeft -= encryptedLen;
-      //   decryptedLengthLeft -= decryptedLen;
-
-      //   if (encryptedLengthLeft <= 0) {
-      //     break_out = true;
-      //     break;
-      //   }
-      // }
     }
-
-    console.log('RSA PARTS', {parts});
 
     return parts;
   }
-
-  //   for(let i = 0; i < this.chunkCount; i++) {
-  //   const magicString = "arf::rsa";
-  //   parts.push([magicString.length, new TextEncoder().encode(magicString)]);
-  //   parts.push([8, longTo8ByteArray(await this.inner!.getByteLength())]);
-  //   // parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
-
-  //   return parts;
-  // }
-
-  // async newEncryptedSlice(start: number, end: number): Promise<Uint8Array> {
-  //   return this.inner!.slice(start, end);
-  // }
-
-  // async rsaPassthroughSlice(start: number, end: number): Promise<Uint8Array> {
-  //   return this.inner!.slice(start, end);
-  // }
 
   async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
     this.log('encryptChunk', chunkIdx, this.rsaKeyPair)
@@ -293,8 +218,8 @@ export async function keyPairToRsaKey(keyPair: CryptoKeyPair): Promise<RsaKey> {
     const publicKey = await window.crypto.subtle.exportKey("jwk", keyPair.publicKey);
     const privateKey = await window.crypto.subtle.exportKey("jwk", keyPair.privateKey);
 
-    console.log('Public Key:', publicKey);
-    console.log('Private Key:', privateKey);
+    // console.log('Public Key:', publicKey);
+    // console.log('Private Key:', privateKey);
 
     if (!publicKey.n || !publicKey.e || !privateKey.d) {
       throw new Error('Missing required key components');

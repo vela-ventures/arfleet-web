@@ -256,7 +256,7 @@ export class AESContainerReader extends SliceableReader {
         const startOffset = start % AES_UNDERLYING_CHUNK_SIZE;
         const len = end - start;
 
-        return concatenated.slice(startOffset, startOffset + len);
+        return concatenated.slice(startOffset, finalChunkIdx - startChunkIdx + 1);
     }
 
 }

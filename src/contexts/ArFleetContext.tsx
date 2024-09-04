@@ -516,27 +516,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
           placement.chunks[chunkIndex] = chunkHashHex;
 
-          // Update the corresponding file's chunkHashes
-          // const fileMetaData = assignment.folder?.chunkIdxToFile.get(chunkIndex)?.[0];
-          // console.log('fileMetaData', fileMetaData)
-          // if (fileMetaData) {
-          //   console.log('assignment', assignment)
-          //   console.log('assignment.files', assignment.files)
-
-          //   const file = assignment.files.find(f => f.path === fileMetaData.path);
-          //   console.log('file', file)
-          //   if (file) {
-          //     if (!file.chunkHashes) {
-          //       file.chunkHashes = {};
-          //     }
-          //     file.chunkHashes[chunkIndex] = chunkHashHex;
-          //   }
-          //   console.log('********')
-          //   console.log('chunkHashes', file?.chunkHashes);
-          //   console.log('chunkIdxToFile', assignment.folder?.chunkIdxToFile);
-          // }
-
-
           // Create a new StorageAssignment instance to ensure we have the serialize method
           const updatedAssignment = new StorageAssignment({
             ...assignment,
@@ -640,11 +619,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, placementBlobLength);
-      console.log('placementBlobLength', placementBlobLength)
-      console.log('pb chunkCount', chunkCount)
-      console.log('pb chunkIndex', chunkIndex)
-      console.log('pb start', start)
-      console.log('pb end', end)
       const chunk = await placementBlob.slice(start, end);
       
       try {
@@ -705,7 +679,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const publicKeyPem = await crypto.subtle.exportKey('spki', publicKey);
     const publicKeyPemBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyPem)));
     const publicKeyPemString = `-----BEGIN PUBLIC KEY-----\n${publicKeyPemBase64}\n-----END PUBLIC KEY-----`;
-    console.log('publicKeyPemString', publicKeyPemString);
+    // console.log('publicKeyPemString', publicKeyPemString);
 
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
@@ -732,13 +706,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placementId: placement.id,
       chunks: placement.chunks || {},
     };
-    console.log('CHUNKS:', metadata.chunks);
-    console.log('FOLDER:', assignment.folder);
-    console.log('FILES:', assignment.folder!.files);
-    console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
+    // console.log('CHUNKS:', metadata.chunks);
+    // console.log('FOLDER:', assignment.folder);
+    // console.log('FILES:', assignment.folder!.files);
+    // console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
 
     const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
-    console.log('FINAL INDEX HASH:', finalIndexHash);
+    // console.log('FINAL INDEX HASH:', finalIndexHash);
     
     // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
     
@@ -756,15 +730,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       acc[file.path].chunks.push({chunk, inFileChunkIdx, hash});
       return acc;
     }, {});
-    
-    // // Sort chunks within each file and update FileMetadata with hashes
-    // Object.values(filesAndChunksGroupByFile).forEach(({file, chunks}) => {
-    //   chunks.sort((a, b) => a.inFileChunkIdx - b.inFileChunkIdx);
-    //   file.chunkHashes = chunks.reduce((acc, c) => {
-    //     acc[c.inFileChunkIdx] = c.hash;
-    //     return acc;
-    //   }, {} as Record<number, string>);
-    // });
 
     // Update the assignment with the new file metadata
     setAssignmentsState(prev => prev.map(a => {
@@ -779,8 +744,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       return a;
     }));
-
-    console.log({filesAndChunksGroupByFile})
 
     const response = await fetch(`${placement.provider}/verify`, {
       method: 'POST',
@@ -834,27 +797,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     for (let i = 0; i < assignment.files.length; i++) {
       const file = assignment.files[i];
       const rawFile = assignment.rawFiles[i];
-      // const chunkHashes: string[] = [];
-      // const rollingHash = await makeHasher(HashType.SHA384);
-
-      // const totalChunks = Math.ceil(rawFile.size / CHUNK_SIZE);
-      // for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-      //   const start = chunkIndex * CHUNK_SIZE;
-      //   const end = Math.min(start + CHUNK_SIZE, rawFile.size);
-      //   const chunk = await readFileChunk(rawFile, start, end);
-      //   const chunkHash = await sha256hex(chunk);
-      //   chunkHashes.push(chunkHash);
-        
-      //   // Update rolling hash with the current chunk
-      //   await rollingHash.update(chunk);
-      // }
-
-      // const fileRollingSha384 = await rollingHash.finalize();
-      // const pointer: DeepHashPointer = {
-      //   value: fileRollingSha384,
-      //   role: 'file',
-      //   dataLength: rawFile.size,
-      // };
 
       // create data item
       if (!address) throw new Error('Address not found');
@@ -862,15 +804,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const dataItem = await assignment.dataItemFactory!.createDataItemWithRawFile(rawFile, /*tags*/[
         {name: "ArFleet-DataItem-Type", value: "File"},
       ], assignment.walletSigner);
-      // const dataItemPrepareToSign = await dataItem.prepareToSign();
-
-      // // sign data item
-      // dataItem.signature = await wallet.signMessage(dataItemPrepareToSign, {
-      //   hashAlgorithm: 'SHA-384',
-      // })
-      // console.log('dataItem', dataItem);
-
-      // dataItem.rawFile = rawFile;
 
       // create encrypted container
       const salt = createSalt();
@@ -886,79 +819,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
 
-      // const folder = await createFolder();
-      // const dataItem = await createDataItemWithBuffer(files[0], pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-      // if (!masterKey) throw new Error('Master key not found');
-      // const secretKey = await encKeyFromMasterKeyAndSalt(masterKey, salt);
-      // const iv = createSalt(AES_IV_BYTE_LENGTH);
-      // const aes = new AESEncryptedContainer(dataItem, salt, secretKey, iv);
-      // const encryptedDataItem = await createDataItemWithAESContainer(aes, pubKeyB64 || '', /*target*/null, /*anchor*/null, /*tags*/[{name: 'Tag1', value: 'Value1'}, {name: 'Tag2', value: 'Value2'}]);
-      // console.log('aes', aes);
-      // const container = new RSAContainer(rsaKeyPair, encryptedDataItem);
-      // console.log('container', container);
-
-      // const rsaKeyPair = await generateRSAKeyPair();
-      // const dataItemFactory = new DataItemFactory(
-      //   /* owner */pubKeyB64!,
-      //   /* target */bufferTob64Url(await sha256(stringToBuffer("empty-target"))), 
-      //   /* root anchor */bufferTob64Url(await sha256(stringToBuffer(assignment.id))),
-      //   /* tags */[
-      //     {name: "ArFleet-Client", value: "Web"},
-      //     {name: "ArFleet-Version", value: ARFLEET_VERSION},
-      //   ],
-      // );
-      // const encryptedDataItemBin = await assignment.dataItemFactory!.createDataItemWithBuffer(new TextEncoder().encode("hello"), /*tags*/[], assignment.walletSigner);
-      // const container = new RSAContainer(rsaKeyPair, encryptedDataItemBin);
-      // const readContainer = await container.slice(0, await container.getByteLength());
-      // const extract = await container.encryptSlice(0, await container.getEncryptedByteLength());
-      // console.log('readContainer', Buffer.from(readContainer).toString('hex').match(/.{1,32}/g)?.join('\n'));
-      // console.log('extract', Buffer.from(extract).toString('hex').match(/.{1,32}/g)?.join('\n'));
-
-      // // send to server
-      // const chunkHashHex = await sha256hex(readContainer);
-
-      // const rsaKP = container.rsaKeyPair;
-      // const publicKey = rsaKP.publicKey;
-      // const publicKeyPem = await crypto.subtle.exportKey('spki', publicKey);
-      // const publicKeyPemBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyPem)));
-      // const publicKeyPemString = `-----BEGIN PUBLIC KEY-----\n${publicKeyPemBase64}\n-----END PUBLIC KEY-----`;
-      // console.log('publicKeyPemString', publicKeyPemString);
-  
-      // const h = {
-      //   'Content-Type': 'application/octet-stream',
-      //   'X-Placement-Id': /*placement.id,*/ await sha256hex(new Date().toISOString()),
-      //   'X-Chunk-Index': '0',
-      //   'X-Chunk-Hash': chunkHashHex,
-      //   'X-RSA-Public-Key': stringToB64Url(publicKeyPemString)
-      // };
-      // console.log('h', h);
-      // const headers = new Headers(h);
-  
-      // const response = await fetch(PROVIDERS[0] + '/upload', {
-      //   method: 'POST',
-      //   headers: headers,
-      //   body: readContainer,
-      // });
-      // console.log('response', response);
-  
-
-
-      // const obj = container;
-      // obj.downloadAsFile("test.obj");
-
       const fileMetadata = new FileMetadata(rawFile);
-      // fileMetadata.chunkHashes = chunkHashes;
-      // fileMetadata.rollingSha384 = bufferToHex(fileRollingSha384);
       if (fileMetadata.dataItem) throw new Error("Data item already set");
       fileMetadata.dataItem = dataItem;
       if (fileMetadata.encryptedDataItem) throw new Error("Encrypted data item already set");
       fileMetadata.aesContainer = aesContainer;
-      // fileMetadata.encryptedDataItem = encryptedDataItem;
       fileMetadata.encryptedDataItem = encryptedDataItem;
       updatedFiles.push(fileMetadata);
-
-      // const dataItemBin = await dataItem?.exportBinaryHeader();
-      // console.log({dataItemBin})
     }
 
     if (!masterKey) throw new Error('Master key not found');

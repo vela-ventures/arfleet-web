@@ -61,7 +61,7 @@ export class Folder extends Sliceable {
             chunkPadded.set(chunk);
 
             const hash = await sha256hex(chunkPadded);
-            console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
+            // console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
             fileOrArp.chunkHashes[curChunkIdx] = hash;
 
             chunkBufs.push(chunkPadded);
@@ -71,13 +71,6 @@ export class Folder extends Sliceable {
 
         const finalStart = start - (chunkIdxStart * FOLDER_FILE_BOUNDARY);
         const len = end - start;
-
-        console.log('File or Arp', fileOrArp);
-        console.log('sliceable', sliceable);
-        console.log('finalStart', finalStart, 'len', len, 'chunkBufConcat.byteLength', chunkBufConcat.byteLength);
-        console.log('chunkBufConcat', chunkBufConcat);
-        console.log('slice', chunkBufConcat.slice(finalStart, finalStart + len));
-        console.log('chunkBufs', chunkBufs);
 
         return chunkBufConcat.slice(finalStart, finalStart + len);
     }
@@ -108,7 +101,7 @@ export class Folder extends Sliceable {
         let arp = new Arp(ArpType.ARP_RAW_DATA, byteLength, (async (cs: number, hashIdx: number) => {
             const [file_, chunkIdx] = this.chunkIdxToFile.get(cs + hashIdx)!;
             const hash = file_.chunkHashes[chunkIdx];
-            console.log('arp file', {file_, file, chunkIdx, hash, cs, hashIdx, chunkIdxToFile: this.chunkIdxToFile});
+            // console.log('arp file', {file_, file, chunkIdx, hash, cs, hashIdx, chunkIdxToFile: this.chunkIdxToFile});
             if (!hash) {
                 console.log('Chunk hash is not set, asking for arp hash of file:', file_, chunkIdx);
                 console.log('chunkIdxToFile:', this.chunkIdxToFile);
@@ -180,13 +173,13 @@ export class Folder extends Sliceable {
 
         await this.addArp(this.encryptedManifestDataItem, encManifestByteLength, fileChunkStart);
 
-        console.log(this.partsBeingBuilt);
-        console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
-        console.log('ENCRYPTED MANIFEST DATA ITEM:', this.encryptedManifestDataItem);
+        // console.log(this.partsBeingBuilt);
+        // console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
+        // console.log('ENCRYPTED MANIFEST DATA ITEM:', this.encryptedManifestDataItem);
     }
 
     async buildParts(): Promise<SliceParts> {
-        console.log('FILES:', this.files);
+        // console.log('FILES:', this.files);
         for (const file of this.files) {
             await this.buildFile(file);
         }
