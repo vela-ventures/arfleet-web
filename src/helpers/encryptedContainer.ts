@@ -1,3 +1,4 @@
+import { bufferToAscii } from "./buf";
 import { Sliceable } from "./sliceable";
 
 type ChunkCacheEntry = {
@@ -31,7 +32,10 @@ export abstract class EncryptedContainer extends Sliceable {
 
   async getEncryptedByteLength(): Promise<number> {
     const originalLength = await this.inner!.getByteLength();
+    console.log("ORIGINALLENGTH", originalLength);
     this.chunkCount = Math.ceil(originalLength / this.underlyingChunkSize);
+    console.log("DIVISION", originalLength / this.underlyingChunkSize);
+    console.log("CHUNKCOUNT", this.chunkCount);
     return this.chunkCount * this.encryptedChunkSize;
   }
 
@@ -59,12 +63,12 @@ export abstract class EncryptedContainer extends Sliceable {
     this.log("startChunkIdx", startChunkIdx);
     this.log("finalByteChunkIdx", finalByteChunkIdx);
 
-    // Calculate offsets within the chunks
-    const startOffset = start % this.encryptedChunkSize;
-    const finishOffset = (end-1) % this.encryptedChunkSize;
+    // // Calculate offsets within the chunks
+    // const startOffset = start % this.encryptedChunkSize;
+    // const finishOffset = (end-1) % this.encryptedChunkSize;
 
-    this.log("startOffset", startOffset);
-    this.log("finishOffset", finishOffset);
+    // this.log("startOffset", startOffset);
+    // this.log("finishOffset", finishOffset);
 
     const chunksToStore = finalByteChunkIdx - startChunkIdx + 1;
 
@@ -77,7 +81,16 @@ export abstract class EncryptedContainer extends Sliceable {
         this.log(">position before", position);
         const encryptedChunk = await this.encryptChunk(chunkIdx);
         encryptedData.set(encryptedChunk, position);
-        position += encryptedChunk.length;
+        position += encryptedChunk.byteLength;
+        if (encryptedChunk.byteLength !== this.encryptedChunkSize) {
+          console.log("encryptedData", encryptedData);
+          console.log("position", position);
+          console.log("encryptedChunk", bufferToAscii(encryptedChunk));
+          console.log("encryptedChunk.byteLength", encryptedChunk.byteLength);
+          console.log("this.encryptedChunkSize", this.encryptedChunkSize);
+          console.log("chunkIdx", chunkIdx);
+          throw new Error("Encrypted chunk size is not equal to the encrypted chunk size");
+        }
         this.log(">position after", position);
     }
 

@@ -105,8 +105,6 @@ export abstract class Sliceable {
                     push = await readFileChunk(bytes, sliceStart, sliceEnd);
                 } else if (bytes instanceof Sliceable) {
                     push = await bytes.slice(sliceStart, sliceEnd);
-                } else if (bytes instanceof FileMetadata) {
-                    throw new Error('FileMetadata is not supported');
                 } else {
                     throw new Error('Invalid type for bytes');
                 }

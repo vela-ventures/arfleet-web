@@ -1,4 +1,4 @@
-import { byteArrayToLong, concatBuffers, longTo8ByteArray } from "./buf";
+import { bufferToAscii, byteArrayToLong, concatBuffers, longTo8ByteArray } from "./buf";
 import { encKeyFromMasterKeyAndSalt } from "./encrypt";
 import { EncryptedContainer } from "./encryptedContainer";
 import { Sliceable, SliceableReader, SliceParts } from "./sliceable";
@@ -39,7 +39,7 @@ export class AESEncryptedContainer extends EncryptedContainer {
 
     async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
         if (this.chunkCache.has(chunkIdx)) {
-            return this.chunkCache.get(chunkIdx)!.plainChunk;
+            return this.chunkCache.get(chunkIdx)!.encryptedChunk;
         }
 
         this.log("encrypting chunk", chunkIdx, "(not found in cache)");
@@ -68,12 +68,16 @@ export class AESEncryptedContainer extends EncryptedContainer {
 
         this.log("AES plaintext chunk", chunk);
 
+        const expandedChunk = new Uint8Array(AES_UNDERLYING_CHUNK_SIZE).fill(0);
+        expandedChunk.set(chunk);
+
         // // XOR with previous chunk ciphertext
         // const chunkXored = new Uint8Array(chunk.length);
         // for (let i = 0; i < chunk.length; i++) {
         //     chunkXored[i] = chunk[i] ^ chain[i];
         // }
-        const chunkXored = chunk;
+        const chunkXored = expandedChunk;
+        // console.log("chunkXored", bufferToAscii(chunkXored));
         
         const encryptedChunk = await new Uint8Array(await encryptAes(chunkXored, this.secretKey, iv, isLastChunk));
         this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
@@ -124,18 +128,21 @@ export const encryptAes = async (file: Uint8Array, key: Uint8Array, iv: Uint8Arr
     //     throw new Error(`Invalid overhead: ${overhead}, expected ${AES_OVERHEAD}`);
     // }
 
+    console.log("ciphertextArrayBuffer.byteLength", ciphertextArrayBuffer.byteLength);
     // make sure the length is correct
     let result;
-    if (ciphertextArrayBuffer.length === AES_CHUNK_SIZE) {
+    if (ciphertextArrayBuffer.byteLength === AES_CHUNK_SIZE) {
         result = ciphertextArrayBuffer;
-    } else if (ciphertextArrayBuffer.length < AES_CHUNK_SIZE && isLastChunk) {
+    } else if (ciphertextArrayBuffer.byteLength < AES_CHUNK_SIZE && isLastChunk) {
         // pad it
         result = new Uint8Array(AES_CHUNK_SIZE);
         result.fill(0);
         result.set(ciphertextArrayBuffer);
     } else {
-        throw new Error(`Invalid length: ${ciphertextArrayBuffer.length}, expected ${AES_CHUNK_SIZE}`);
+        throw new Error(`Invalid length: ${ciphertextArrayBuffer.byteLength}, expected ${AES_CHUNK_SIZE}`);
     }
+
+    console.log("result", bufferToAscii(result));
 
     return result;
 }
