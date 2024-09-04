@@ -5,15 +5,21 @@ import { StorageAssignment } from '../types';
 
 interface StorageAssignmentListProps {
   assignments: StorageAssignment[];
-  selectedAssignment: StorageAssignment | null;
-  onSelectAssignment: (assignment: StorageAssignment) => void;
+  selectedAssignmentId: string | null;
+  onSelectAssignment: (assignmentId: string) => void;
+  fetchAndProcessManifest: (assignment: StorageAssignment, masterKey: Uint8Array | null) => Promise<void>;
+  masterKey: Uint8Array | null;
 }
 
 export default function StorageAssignmentList({
   assignments,
-  selectedAssignment,
+  selectedAssignmentId,
   onSelectAssignment,
+  fetchAndProcessManifest,
+  masterKey,
 }: StorageAssignmentListProps) {
+  console.log('StorageAssignmentList rendering', assignments.length);
+  console.log("Assignments in StorageAssignmentList:", assignments);
   return (
     <div className="w-64 border-r overflow-y-auto">
       <h2 className="text-lg font-semibold p-4">Assignments</h2>
@@ -23,9 +29,12 @@ export default function StorageAssignmentList({
             key={assignment.id}
             className={cn(
               "p-4 cursor-pointer hover:bg-muted",
-              selectedAssignment?.id === assignment.id && "bg-muted"
+              selectedAssignmentId === assignment.id && "bg-muted"
             )}
-            onClick={() => onSelectAssignment(assignment)}
+            onClick={() => {
+              onSelectAssignment(assignment.id);
+              fetchAndProcessManifest(assignment, masterKey);
+            }}
           >
             <p>Assignment {assignment.id.slice(0, 8)}...</p>
             <p className="text-sm text-muted-foreground mb-2">{assignment.status}</p>

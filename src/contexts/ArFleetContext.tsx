@@ -141,7 +141,7 @@ export class StorageAssignment {
   progress: number;
   dataItemFactory: DataItemFactory | null;
   folder: Folder | null;
-  encryptedManifestDataItemId: string | null;
+  encryptedManifestArp: string | null;
   walletSigner: WalletSigner | null;
 
   constructor(data: Partial<StorageAssignment>) {
@@ -154,7 +154,7 @@ export class StorageAssignment {
     this.progress = 0;
     this.dataItemFactory = null;
     this.folder = null;
-    this.encryptedManifestDataItemId = data.encryptedManifestDataItemId || null;
+    this.encryptedManifestArp = data.encryptedManifestArp || null;
     this.walletSigner = null;
 
     Object.assign(this, data);
@@ -165,7 +165,7 @@ export class StorageAssignment {
   serialize() {
     return {
       id: this.id,
-      files: this.files.map(file => file.serialize()),
+      // files: this.files.map(file => file.serialize()),
       status: this.status,
       placements: this.placements.map(placement => {
         if (placement instanceof Placement) {
@@ -175,7 +175,7 @@ export class StorageAssignment {
           return null;
         }
       }).filter(Boolean),
-      encryptedManifestDataItemId: this.encryptedManifestDataItemId,
+      encryptedManifestArp: this.encryptedManifestArp,
       progress: this.progress,
     };
   }
@@ -183,7 +183,7 @@ export class StorageAssignment {
   static unserialize(data: any): StorageAssignment {
     return new StorageAssignment({
       ...data,
-      files: data.files.map(FileMetadata.unserialize),
+      // files: data.files.map(FileMetadata.unserialize),
       placements: data.placements.map(Placement.unserialize),
     });
   }
@@ -191,8 +191,8 @@ export class StorageAssignment {
 
 interface ArFleetContextType {
   assignments: StorageAssignment[];
-  selectedAssignment: StorageAssignment | null;
-  setSelectedAssignment: (assignment: StorageAssignment | null) => void;
+  selectedAssignmentId: string | null;
+  setSelectedAssignmentId: (assignmentId: string | null) => void;
   onDrop: (acceptedFiles: File[]) => void;
   processPlacementQueue: () => Promise<void>;
   address: string | null;
@@ -203,6 +203,8 @@ interface ArFleetContextType {
   fetchFromArweave: (placementId: string) => Promise<any>;
   devMode: boolean;
   resetAODB: () => Promise<void>;
+  fetchAndProcessManifest: (assignment: StorageAssignment, masterKey: Uint8Array | null) => Promise<void>;
+  masterKey: Uint8Array | null;
 }
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
@@ -293,8 +295,8 @@ class WalletSigner {
 }
 
 export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [assignments, setAssignments] = useState<StorageAssignment[]>([]);
-  const [selectedAssignment, setSelectedAssignment] = useState<StorageAssignment | null>(null);
+  const [assignmentsState, setAssignmentsState] = useState<StorageAssignment[]>([]);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
   const [assignmentQueue, setAssignmentQueue] = useState<string[]>([]);
   const placementQueueRef = useRef<Placement[]>([]);
   const processingPlacement = useRef<boolean>(false);
@@ -322,7 +324,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const resetAODB = useCallback(async () => {
     if (aodb) {
       await aodb.reset();
-      setAssignments([]);
+      setAssignmentsState([]);
       console.log('AODB reset successfully');
     }
   }, [aodb]);
@@ -388,7 +390,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
 
         const validAssignments = loadedAssignments.filter(Boolean) as StorageAssignment[];
-        setAssignments(validAssignments);
+        setAssignmentsState(validAssignments);
       } else {
         console.error('parsedAssignmentIds is not an array:', parsedAssignmentIds);
       }
@@ -470,7 +472,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [connectWallet]);
 
   const updatePlacementStatus = useCallback((placementId: string, status: Placement['status']) => {
-    setAssignments(prev => {
+    setAssignmentsState(prev => {
       const newAssignments = prev.map(a => {
         const updatedPlacements = a.placements.map(p => {
           if (p.id === placementId) {
@@ -504,7 +506,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [aodb]);
 
   const updatePlacementProgress = useCallback((placementId: string, progress: number, chunkIndex: number, chunkHashHex: string) => {
-    setAssignments(produce(draft => {
+    setAssignmentsState(produce(draft => {
       for (const assignment of draft) {
         const placement = assignment.placements.find(p => p.id === placementId);
         if (placement) {
@@ -551,7 +553,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [aodb]);
 
   const updateAssignmentProgress = useCallback((assignmentId: string) => {
-    setAssignments(prev => prev.map(a => {
+    setAssignmentsState(prev => prev.map(a => {
       if (a.id === assignmentId) {
         const totalProgress = a.placements.reduce((sum, p) => sum + p.progress, 0);
         const averageProgress = totalProgress / a.placements.length;
@@ -562,7 +564,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   processPlacementRef.current = async (placement: Placement) => {
-    const assignment = assignments.find(a => a.id === placement.assignmentId);
+    const assignment = assignmentsState.find(a => a.id === placement.assignmentId);
     if (!assignment) {
       console.error(`Assignment not found for placement ${placement.id}`);
       updatePlacementStatus(placement.id, 'error');
@@ -661,7 +663,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // Update the placement in the assignments state
-    setAssignments(prev => prev.map(a => {
+    setAssignmentsState(prev => prev.map(a => {
       if (a.id === assignment.id) {
         return {
           ...a,
@@ -674,16 +676,17 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
 
     // post-transfer
-    const encryptedManifestDataItemId = await assignment.folder!.encryptedManifestDataItem!.getDataItemId();
-    
+    const encryptedManifestArp = await assignment.folder!.encryptedManifestDataItem!.arp.chunkHashes[0];
+    console.log('encryptedManifestArp', encryptedManifestArp);
+
     // Create a new assignment object with the updated property
     const updatedAssignment = new StorageAssignment({
       ...assignment,
-      encryptedManifestDataItemId: encryptedManifestDataItemId
+      encryptedManifestArp
     });
 
     // Update the assignments state with the new assignment object
-    setAssignments(prev => prev.map(a => 
+    setAssignmentsState(prev => prev.map(a => 
       a.id === updatedAssignment.id ? updatedAssignment : a
     ));
 
@@ -724,54 +727,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return chunkHashHex;
   };
 
-  const tryToRead = async (placement: Placement, finalHash: string, masterKey: Uint8Array) => {
-    // ask provider to get this chunk
-    const arp = new ArpReader(finalHash, placement);
-    await arp.init();
-    console.log('arp', arp);
-
-    const diread = new DataItemReader(arp);
-    await diread.init();
-    console.log('diread', diread);
-
-    const aesread = new AESContainerReader(diread, masterKey);
-    await aesread.init();
-    // console.log('aesread', aesread);
-
-    const dataItemDecrypted = new DataItemReader(aesread);
-    await dataItemDecrypted.init();
-
-    const data = await dataItemDecrypted.slice(0, dataItemDecrypted.dataLength);
-    console.log('read dataItem', bufferToAscii(data));
-
-    const manifest = JSON.parse(bufferToString(data));
-    console.log('manifest', manifest);
-
-    const lorem = manifest.paths["lorem.txt"];
-    const loremid = lorem.id;
-    // const loremarpid = bufferToHex(b64UrlToBuffer(lorem.arp));
-    const loremarpid = lorem.arp;
-
-    const loremArp = new ArpReader(loremarpid, placement);
-    await loremArp.init();
-    console.log('loremArp', loremArp);
-    console.log(bufferToAscii(await loremArp.slice(0, 50)));
-    
-    const loremDi = new DataItemReader(loremArp);
-    await loremDi.init();
-    console.log('loremDi', loremDi);
-
-    const loremAesread = new AESContainerReader(loremDi, masterKey);
-    await loremAesread.init();
-    // console.log('loremAesread', loremAesread);
-
-    const loremDataItemDecrypted = new DataItemReader(loremAesread);
-    await loremDataItemDecrypted.init();
-
-    const loremData = await loremDataItemDecrypted.slice(0, loremDataItemDecrypted.dataLength);
-    console.log('loremData', bufferToAscii(loremData));
-  };
-
   verifyStorageRef.current = async (placement: Placement, assignment: StorageAssignment) => {
     const metadata = {
       placementId: placement.id,
@@ -784,8 +739,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
     console.log('FINAL INDEX HASH:', finalIndexHash);
-    await tryToRead(placement, finalIndexHash, assignment.folder!.masterKey);
-
+    
     // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
     
     const filesAndChunks = [];
@@ -813,7 +767,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // });
 
     // Update the assignment with the new file metadata
-    setAssignments(prev => prev.map(a => {
+    setAssignmentsState(prev => prev.map(a => {
       if (a.id === assignment.id) {
         return {
           ...a,
@@ -871,7 +825,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [updatePlacementStatus, updateAssignmentProgress]);
 
   const processAssignment = async (assignment: StorageAssignment) => {
-    setAssignments(prev => prev.map(a => 
+    setAssignmentsState(prev => prev.map(a => 
       a.id === assignment.id ? { ...a, status: 'chunking' } : a
     ));
 
@@ -1033,7 +987,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }));
 
-    setAssignments(produce(draft => {
+    setAssignmentsState(produce(draft => {
       const assignmentToUpdate = draft.find(a => a.id === assignment.id);
       if (assignmentToUpdate) {
         assignmentToUpdate.files = updatedFiles;
@@ -1095,7 +1049,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ],
       ),
     });
-    setAssignments(prev => {
+    setAssignmentsState(prev => {
       const updatedAssignments = [...prev, newAssignment];
       aodb?.set(`assignment:${newAssignment.id}`, newAssignment.serialize());
       const allAssignmentIds = updatedAssignments.map(a => a.id);
@@ -1110,7 +1064,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (assignmentQueue.length === 0) return;
 
       const assignmentId = assignmentQueue[0];
-      const assignment = assignments.find(a => a.id === assignmentId);
+      const assignment = assignmentsState.find(a => a.id === assignmentId);
 
       if (assignment && assignment.status === 'created') {
         await processAssignment(assignment);
@@ -1119,14 +1073,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     processNextAssignment();
-  }, [assignmentQueue, assignments]);
+  }, [assignmentQueue, assignmentsState]);
 
   useEffect(() => {
     processPlacementQueue();
-  }, [processPlacementQueue, assignments]);
+  }, [processPlacementQueue, assignmentsState]);
 
   const fetchFromArweave = useCallback(async (placementId: string) => {
-    const placement = assignments.flatMap(a => a.placements).find(p => p.id === placementId);
+    const placement = assignmentsState.flatMap(a => a.placements).find(p => p.id === placementId);
     if (!placement || placement.status !== 'completed') {
       throw new Error('Placement not completed or not found');
     }
@@ -1135,22 +1089,96 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // This is a placeholder and needs to be implemented based on your Arweave setup
     const arweaveData = await fetchDataFromArweave(placement);
     return arweaveData;
-  }, [assignments]);
+  }, [assignmentsState]);
+
+  const fetchAndProcessManifest = useCallback(async (assignment: StorageAssignment, masterKey: Uint8Array | null) => {
+    console.log('fetchAndProcessManifest called', assignment.id);
+    if (!masterKey) throw new Error('Master key not found');
+    
+    if (!assignment.encryptedManifestArp) {
+      console.error('No encrypted manifest arp ID found for this assignment');
+      return;
+    }
+
+    const placement = assignment.placements[0]; // Assuming we're using the first placement
+    if (!placement) {
+      console.error('No placement found for this assignment');
+      return;
+    }
+
+    try {
+      const encryptedManifestArp = assignment.encryptedManifestArp;
+
+      const arp = new ArpReader(encryptedManifestArp, placement);
+      await arp.init();
+      // console.log('arp', arp);
+
+      const diread = new DataItemReader(arp);
+      await diread.init();
+      // console.log('diread', diread);
+
+      const aesread = new AESContainerReader(diread, masterKey);
+      await aesread.init();
+      // console.log('aesread', aesread);
+
+      const dataItemDecrypted = new DataItemReader(aesread);
+      await dataItemDecrypted.init();
+
+      const data = await dataItemDecrypted.slice(0, dataItemDecrypted.dataLength);
+      // console.log('data', data);
+
+      const manifestData = JSON.parse(bufferToString(data));
+      console.log('Manifest data:', manifestData);
+
+      setAssignmentsState(prevAssignments => {
+        console.log('Updating assignments');
+        const updatedAssignments = prevAssignments.map(a => {
+          if (a.id === assignment.id) {
+            console.log('Updating assignment', a.id);
+            return {
+              ...a,
+              files: Object.entries(manifestData.paths).map(([path, fileInfo]: [string, any]) => {
+                const existingFile = a.files.find(f => f.path === path);
+                return new FileMetadata({
+                  ...existingFile,
+                  name: path,
+                  size: fileInfo.size,
+                  path: path,
+                  arpId: fileInfo.arp,
+                  // arp: new Arp(fileInfo.arp, placement),
+                  // dataItemId: fileInfo.id
+                });
+              })
+            };
+          }
+          return a;
+        });
+        console.log('Updated assignments', updatedAssignments);
+        return updatedAssignments;
+      });
+
+      console.log('Manifest processed successfully');
+    } catch (error) {
+      console.error('Error fetching or processing manifest:', error);
+    }
+  }, [setAssignmentsState]);
 
   const value = {
-    assignments,
-    selectedAssignment,
-    setSelectedAssignment,
+    assignments: assignmentsState,
+    selectedAssignmentId,
+    setSelectedAssignmentId,
     onDrop,
     processPlacementQueue,
     address,
     wallet,
     signer,
     arConnected,
+    masterKey,
     connectWallet,
     fetchFromArweave,
     devMode,
     resetAODB,
+    fetchAndProcessManifest,
   };
 
   return <ArFleetContext.Provider value={value}>{children}</ArFleetContext.Provider>;

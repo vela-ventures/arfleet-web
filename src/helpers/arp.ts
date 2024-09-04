@@ -153,8 +153,6 @@ export class ArpReader extends SliceableReader {
         const totalChunks = finalChunkIdx - startChunkIdx + 1;
         const extendedLen = totalChunks * this.chunkSize;
 
-        console.log('ARP CHUNK HASHES', this.chunkHashes);
-
         const buf = new Uint8Array(extendedLen);
         for (let i = 0; i < totalChunks; i++) {
             const chunkHash = this.chunkHashes[startChunkIdx + i];
@@ -164,15 +162,13 @@ export class ArpReader extends SliceableReader {
                 throw new Error('Chunk hash is the same as the ARP hash');
             }
 
-            console.log('downloading chunk', chunkHash);
             let chunk = this.cacheChunks.get(startChunkIdx + i);
 
             if (!chunk) {
                 chunk = await this.placement.downloadChunk(chunkHash);
                 this.cacheChunks.set(startChunkIdx + i, chunk);
             }
-            console.log('downloaded', bufferToAscii(chunk));
-
+            
             buf.set(chunk, i * this.chunkSize);
         }
 
@@ -190,10 +186,10 @@ export class ArpReader extends SliceableReader {
         const firstOffset = start % this.chunkSize;
         const sliceLen = end - start;
 
-        console.log('arp slice', start, end, firstOffset, sliceLen, bufferToAscii(buf));
+        // console.log('arp slice', start, end, firstOffset, sliceLen, bufferToAscii(buf));
 
         const result = buf.slice(firstOffset, firstOffset + sliceLen);
-        console.log('arp slice result', bufferToAscii(result));
+        // console.log('arp slice result', bufferToAscii(result));
         return result;
     }
 
@@ -206,9 +202,9 @@ export class ArpReader extends SliceableReader {
             await this.manifest!.init();
         } else {
             if (!this.hash) throw new Error('ARP hash is not set');
-            console.log('downloading arp manifest', this.hash);
+            // console.log('downloading arp manifest', this.hash);
             this.manifest = await this.placement.downloadChunk(this.hash);
-            console.log('downloaded arp manifest', this.hash, bufferToAscii(this.manifest));
+            // console.log('downloaded arp manifest', this.hash, bufferToAscii(this.manifest));
         }
 
         // verify header

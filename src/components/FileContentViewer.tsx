@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon } from 'lucide-react';
 import { concatBuffers } from '@/helpers/buf';
+import { useArFleet } from '../contexts/ArFleetContext';
+import { ArpReader } from '@/helpers/arp';
+import { DataItemReader } from '@/helpers/dataitemmod';
+import { AESContainerReader } from '@/helpers/aes';
 
 interface FileTreeItem {
   type: 'file' | 'folder';
@@ -14,10 +18,15 @@ interface FileTreeItem {
   file?: FileMetadata;
 }
 
-export default function FileContentViewer({ assignment }: FileContentViewerProps) {
+export default function FileContentViewer() {
+  const { assignments, selectedAssignmentId, masterKey } = useArFleet();
+  const assignment = assignments.find((a: StorageAssignment) => a.id === selectedAssignmentId);
+
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
+
+  console.log("assignment in FileContentViewer", assignment);
 
   if (!assignment) {
     return null;
@@ -160,22 +169,34 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
   const fileTree = buildFileTree(assignment.files);
 
   const downloadFile = async (file: FileMetadata) => {
+    console.log('Downloading file:', file);
     setIsDownloading(true);
-    try {
-      const chunks: Uint8Array[] = [];
+    // try {
       const placement = assignment.placements[0]; // Assuming we're using the first placement
-
-      for (let chunkIndex = 0; chunkIndex < Object.keys(file.chunkHashes).length; chunkIndex++) {
-        const chunkHash = file.chunkHashes[chunkIndex];
-        const chunkData = await fetchChunk(placement, chunkHash);
-        chunks.push(chunkData);
+      
+      if (!masterKey) {
+        console.error('Master key is not set');
+        return;
       }
 
-      const mergedData = concatBuffers(chunks);
-      const dataView = new DataView(mergedData.buffer, mergedData.byteOffset, mergedData.byteLength);
-      const fileSize = Number(dataView.getBigUint64(0, true)); // Read 8-byte little-endian size
+      const arpReader = new ArpReader(file.arpId, placement);
+      await arpReader.init();
+      console.log('arpReader', arpReader);
 
-      const fileData = mergedData.slice(8, 8 + fileSize); // Slice the actual file data
+      const dataItemReader = new DataItemReader(arpReader);
+      await dataItemReader.init();
+      console.log('dataItemReader', dataItemReader);
+
+      const aesReader = new AESContainerReader(dataItemReader, masterKey);
+      await aesReader.init();
+      console.log('aesReader', aesReader);
+
+      const decryptedDataItemReader = new DataItemReader(aesReader);
+      await decryptedDataItemReader.init();
+      console.log('decryptedDataItemReader', decryptedDataItemReader);
+      
+      const fileData = await decryptedDataItemReader.slice(0, decryptedDataItemReader.dataLength);
+      
       const blob = new Blob([fileData], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
 
@@ -186,22 +207,17 @@ export default function FileContentViewer({ assignment }: FileContentViewerProps
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error downloading file:', error);
-      // You might want to show an error message to the user here
-    } finally {
+
       setIsDownloading(false);
-    }
+    // } catch (error) {
+    //   throw error;
+    //   console.error('Error downloading file:', error);
+    //   // You might want to show an error message to the user here
+    // } finally {
+    //   setIsDownloading(false);
+    // }
   };
 
-  const fetchChunk = async (placement: Placement, chunkHash: string): Promise<Uint8Array> => {
-    const response = await fetch(`${placement.provider}/download/${chunkHash}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch chunk: ${chunkHash}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
-  };
 
   return (
     <div className="p-2 border-t">

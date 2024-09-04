@@ -1,12 +1,11 @@
 import React from 'react';
 import { Progress } from "@/components/ui/progress";
-import { StorageAssignment } from '../types';
+import { useArFleet } from '../contexts/ArFleetContext';
 
-interface AssignmentDetailsProps {
-  assignment: StorageAssignment | null;
-}
+export default function AssignmentDetails() {
+  const { assignments, selectedAssignmentId } = useArFleet();
+  const assignment = assignments.find(a => a.id === selectedAssignmentId);
 
-export default function AssignmentDetails({ assignment }: AssignmentDetailsProps) {
   if (!assignment) {
     return <div className="p-4">Select an assignment to view details</div>;
   }

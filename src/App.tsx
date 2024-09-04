@@ -231,12 +231,13 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   activeLink: string;
   theme: string;
   isGlobalDragActive: boolean;
+  masterKey: Uint8Array | null;
 }) {
   const location = useLocation()
-  const { arConnected } = useArFleet();
+  const { arConnected, masterKey } = useArFleet();
 
   const links = [
-    { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet isGlobalDragActive={isGlobalDragActive} /> },
+    { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet isGlobalDragActive={isGlobalDragActive} masterKey={masterKey} /> },
     { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Dashboard /> },
     { name: "Files", href: "/files", icon: <FolderArchive className="h-4 w-4" />, component: <Dashboard /> },
     // { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },

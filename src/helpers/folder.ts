@@ -57,22 +57,29 @@ export class Folder extends Sliceable {
             const chunkSize = (curChunkIdx === chunkIdxFinal) ? byteLength % FOLDER_FILE_BOUNDARY : FOLDER_FILE_BOUNDARY;
             const chunk = await sliceable.slice(chunkStartByte, chunkStartByte + chunkSize);
 
-            const chunkPadded = new Uint8Array(FOLDER_FILE_BOUNDARY);
+            const chunkPadded = new Uint8Array(FOLDER_FILE_BOUNDARY).fill(0);
             chunkPadded.set(chunk);
 
             const hash = await sha256hex(chunkPadded);
-            console.log('effective hash of chunk:', new TextDecoder().decode(chunk), chunk.byteLength, hash, curChunkIdx, fileOrArp);
+            console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
             fileOrArp.chunkHashes[curChunkIdx] = hash;
 
-            chunkBufs.push(chunk);
+            chunkBufs.push(chunkPadded);
         }
 
         const chunkBufConcat = concatBuffers(chunkBufs);
 
         const finalStart = start - (chunkIdxStart * FOLDER_FILE_BOUNDARY);
-        const finalEnd = end - (chunkIdxFinal * FOLDER_FILE_BOUNDARY);
+        const len = end - start;
 
-        return chunkBufConcat.slice(finalStart, finalEnd);
+        console.log('File or Arp', fileOrArp);
+        console.log('sliceable', sliceable);
+        console.log('finalStart', finalStart, 'len', len, 'chunkBufConcat.byteLength', chunkBufConcat.byteLength);
+        console.log('chunkBufConcat', chunkBufConcat);
+        console.log('slice', chunkBufConcat.slice(finalStart, finalStart + len));
+        console.log('chunkBufs', chunkBufs);
+
+        return chunkBufConcat.slice(finalStart, finalStart + len);
     }
 
     async pushZeroes(parts: SliceParts, byteLength: number) {
@@ -94,7 +101,7 @@ export class Folder extends Sliceable {
         console.log({totalChunks, file, fileChunkStart, byteLength});
         for(let q = 0; q < totalChunks; q++) { this.chunkIdxToFile.set(this.chunksConsumed, [ file, q ]); this.chunksConsumed++; }
 
-        this.addArp(file, byteLength, fileChunkStart);
+        await this.addArp(file, byteLength, fileChunkStart);
     }
 
     async addArp(file: FileMetadata | DataItem, byteLength: number, fileChunkStart: number) {

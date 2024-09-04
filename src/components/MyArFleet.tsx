@@ -9,6 +9,7 @@ import { useArFleet } from '../contexts/ArFleetContext';
 
 interface MyArFleetProps {
   isGlobalDragActive: boolean;
+  masterKey: Uint8Array | null;
 }
 
 declare global {
@@ -29,8 +30,9 @@ async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Prom
   return files;
 }
 
-export default function MyArFleet({ isGlobalDragActive }: MyArFleetProps) {
-  const { assignments, selectedAssignment, setSelectedAssignment, onDrop, devMode } = useArFleet();
+export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetProps) {
+  const { assignments, selectedAssignmentId, setSelectedAssignmentId, onDrop, devMode, fetchAndProcessManifest } = useArFleet();
+  console.log('MyArFleet rendering', assignments.length);
 
   const { getRootProps, getInputProps, isDragActive: isLocalDragActive } = useDropzone({
     onDrop,
@@ -114,12 +116,14 @@ export default function MyArFleet({ isGlobalDragActive }: MyArFleetProps) {
         <div className="flex-1 flex">
           <StorageAssignmentList
             assignments={assignments}
-            selectedAssignment={selectedAssignment}
-            onSelectAssignment={setSelectedAssignment}
+            selectedAssignmentId={selectedAssignmentId}
+            onSelectAssignment={setSelectedAssignmentId}
+            fetchAndProcessManifest={fetchAndProcessManifest}
+            masterKey={masterKey}
           />
           <div className="flex-1 flex flex-col">
-            <AssignmentDetails assignment={selectedAssignment} />
-            <FileContentViewer assignment={selectedAssignment} />
+            <AssignmentDetails />
+            <FileContentViewer />
           </div>
         </div>
       )}

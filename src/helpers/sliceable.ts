@@ -1,3 +1,4 @@
+import { FileMetadata } from "@/contexts/ArFleetContext";
 import { concatBuffers } from "./buf";
 import { readFileChunk } from "./buf";
 import { downloadUint8ArrayAsFile } from "./extra";
@@ -104,11 +105,14 @@ export abstract class Sliceable {
                     push = await readFileChunk(bytes, sliceStart, sliceEnd);
                 } else if (bytes instanceof Sliceable) {
                     push = await bytes.slice(sliceStart, sliceEnd);
+                } else if (bytes instanceof FileMetadata) {
+                    throw new Error('FileMetadata is not supported');
                 } else {
                     throw new Error('Invalid type for bytes');
                 }
 
                 if (push.byteLength !== sliceEnd - sliceStart) {
+                    console.log('Invalid slice returned:', {sliceStart, sliceEnd, push, bytes});
                     throw new Error(`Invalid slice returned: expected ${sliceEnd - sliceStart} bytes, got ${push.byteLength}`);
                 } else {
                     result.push(push);

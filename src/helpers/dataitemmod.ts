@@ -91,7 +91,7 @@ export class DataItem extends Sliceable {
     async prepareToSign(): Promise<Uint8Array> {
         if (!this.dataHash) throw new Error("Data hash is not available");
 
-        console.log(this);
+        // console.log(this);
         let signArray = [];
         signArray.push(stringToBuffer("dataitem"));
         signArray.push(stringToBuffer("1"));
@@ -185,8 +185,8 @@ export class DataItem extends Sliceable {
       const owner_length = _owner.byteLength;
 
       const length = 2 + this.signatureLength + owner_length + target_length + anchor_length + tags_length;
-      console.log({length, owner_length, target_length, anchor_length, tags_length})
-      console.log("tags", _tags)
+      // console.log({length, owner_length, target_length, anchor_length, tags_length})
+      // console.log("tags", _tags)
   
       // Create array with set length
       const bytes = new Uint8Array(length).fill(0xff);
@@ -228,9 +228,9 @@ export class DataItem extends Sliceable {
       const bytesCount = longTo8ByteArray(_tags?.byteLength ?? 0);
       bytes.set(bytesCount, tags_start + 8);
       if (_tags) {
-        console.log("tags", _tags)
-        console.log("tags start", tags_start)
-        console.log("tags start + 16", tags_start + 16)
+        // console.log("tags", _tags)
+        // console.log("tags start", tags_start)
+        // console.log("tags start + 16", tags_start + 16)
         bytes.set(_tags, tags_start + 16);
       }
 
@@ -563,8 +563,8 @@ export class DataItemReader extends SliceableReader {
     const preHeader = await this.inner.slice(0, 16);
 
     const magicBytes = await preHeader.slice(0, 8);
-    console.log("preHeader", preHeader);
-    console.log("magicBytes", bufferToString(magicBytes));
+    // console.log("preHeader", preHeader);
+    // console.log("magicBytes", bufferToString(magicBytes));
     if (bufferToString(magicBytes) !== "arf::~di") throw new Error("Invalid magic bytes: " + bufferToAscii(magicBytes));
 
     const dataLength = byteArrayToLong(await preHeader.slice(8, 16));
@@ -582,9 +582,9 @@ export class DataItemReader extends SliceableReader {
     if (start < 0 || end < 0) throw new Error("Invalid start and end");
     if (start > end) throw new Error("Invalid start and end");
     if (start >= this.dataLength || end > this.dataLength) throw new Error("Invalid start and end");
-    console.log('data offset', this.dataOffset);
-    console.log('start', start);
-    console.log('end', end);
+    // console.log('data offset', this.dataOffset);
+    // console.log('start', start);
+    // console.log('end', end);
     return await this.inner.slice(this.dataOffset + start, this.dataOffset + end);
   }
 }
