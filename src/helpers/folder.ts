@@ -1,5 +1,6 @@
 import { FileMetadata } from "../contexts/ArFleetContext";
 import { AES_IV_BYTE_LENGTH, AESEncryptedContainer } from "./aes";
+import { Arp, ArpType } from "./arp";
 import { concatBuffers } from "./buf";
 import { DataItem, DataItemFactory } from "./dataitemmod";
 import { createSalt, encKeyFromMasterKeyAndSalt } from "./encrypt";
@@ -8,7 +9,7 @@ import { FolderManifest } from "./folderManifest";
 import { sha256hex } from "./hash";
 import { PassthroughAES } from "./passthroughAES";
 import { PLACEMENT_BLOB_CHUNK_SIZE } from "./placementBlob";
-import { RSA_ENCRYPTED_CHUNK_SIZE, RSA_HEADER_SIZE, RSA_UNDERLYING_CHUNK_SIZE } from "./rsa";
+import { RSA_ENCRYPTED_CHUNK_SIZE, RSA_HEADER_SIZE, RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE, RSA_UNDERLYING_CHUNK_SIZE } from "./rsa";
 import { Sliceable, SlicePart, SliceParts } from "./sliceable";
 
 const FOLDER_FILE_BOUNDARY = (PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE) * RSA_UNDERLYING_CHUNK_SIZE;
@@ -19,7 +20,9 @@ export class Folder extends Sliceable {
     encryptedManifestDataItem: DataItem | null = null;
     signer: any;
     masterKey: Uint8Array;
-    chunkIdxToFile: Map<number, [ FileMetadata, number ]> = new Map();
+    chunkIdxToFile: Map<number, [ FileMetadata | Arp | DataItem, number ]> = new Map();
+    chunksConsumed = 0;
+    partsBeingBuilt: SliceParts = [];
 
     constructor(files: FileMetadata[], dataItemFactory: DataItemFactory, signer: any, masterKey: Uint8Array) {
         super();
@@ -38,8 +41,10 @@ export class Folder extends Sliceable {
         return 0;
     }
 
-    async sliceThroughFileDataItem(file: FileMetadata, start: number, end: number) {
-        const byteLength = await file.encryptedDataItem!.getByteLength();
+    async sliceThroughFileDataItem(fileOrArp: FileMetadata | Arp | DataItem, start: number, end: number) {
+        const sliceable = (fileOrArp instanceof FileMetadata) ? fileOrArp.encryptedDataItem! : fileOrArp;
+
+        const byteLength = await sliceable.getByteLength();
         
         const chunkIdxStart = Math.floor(start / FOLDER_FILE_BOUNDARY);
         const chunkIdxFinal = Math.floor((end-1) / FOLDER_FILE_BOUNDARY);
@@ -50,10 +55,14 @@ export class Folder extends Sliceable {
             // const chunk = await file.encryptedDataItem!.slice(curChunkIdx * FOLDER_FILE_BOUNDARY, Math.min(curChunkIdx * FOLDER_FILE_BOUNDARY + FOLDER_FILE_BOUNDARY, byteLength));
             const chunkStartByte = curChunkIdx * FOLDER_FILE_BOUNDARY;
             const chunkSize = (curChunkIdx === chunkIdxFinal) ? byteLength % FOLDER_FILE_BOUNDARY : FOLDER_FILE_BOUNDARY;
-            const chunk = await file.encryptedDataItem!.slice(chunkStartByte, chunkStartByte + chunkSize);
-            const hash = await sha256hex(chunk);
-            console.log('effective hash of chunk:', new TextDecoder().decode(chunk), chunk.byteLength, hash, curChunkIdx, file);
-            file.chunkHashes[curChunkIdx] = hash;
+            const chunk = await sliceable.slice(chunkStartByte, chunkStartByte + chunkSize);
+
+            const chunkPadded = new Uint8Array(FOLDER_FILE_BOUNDARY);
+            chunkPadded.set(chunk);
+
+            const hash = await sha256hex(chunkPadded);
+            console.log('effective hash of chunk:', new TextDecoder().decode(chunk), chunk.byteLength, hash, curChunkIdx, fileOrArp);
+            fileOrArp.chunkHashes[curChunkIdx] = hash;
 
             chunkBufs.push(chunk);
         }
@@ -66,43 +75,70 @@ export class Folder extends Sliceable {
         return chunkBufConcat.slice(finalStart, finalEnd);
     }
 
-    async buildParts(): Promise<SliceParts> {
-        let parts: SliceParts = [];
-
-        let c = 0;
-
-        console.log('FILES:', this.files);
-        for (const file of this.files) {
-            console.log({file})
-
-            // File
-
-            const byteLength = await file.encryptedDataItem!.getByteLength();
-            parts.push([byteLength, this.sliceThroughFileDataItem.bind(this, file)] as SlicePart);
-
-            // Align with zeroes to the boundary
-
-            console.log("FOLDER_FILE_BOUNDARY", FOLDER_FILE_BOUNDARY);
-            const diff = await this.remainingZeroes(byteLength, FOLDER_FILE_BOUNDARY);
-            console.log("diff", diff);
-            if (diff > 0) {
-                parts.push([diff, this.zeroes.bind(this, 0, diff)] as SlicePart);
-            }
-
-            // -
-
-            const totalChunks = Math.ceil(byteLength / FOLDER_FILE_BOUNDARY);
-
-            for(let q = 0; q < totalChunks; q++) {
-                this.chunkIdxToFile.set(c, [ file, q ]);
-                c++;
-            }
+    async pushZeroes(parts: SliceParts, byteLength: number) {
+        const diff = await this.remainingZeroes(byteLength, FOLDER_FILE_BOUNDARY);
+        if (diff > 0) {
+            parts.push([diff, this.zeroes.bind(this, 0, diff)] as SlicePart);
         }
-        
-        // let parts = await Promise.all(this.files.map(async file => {
-        //     const byteLength = await file.encryptedDataItem!.getByteLength();
-        //     return [byteLength, file.encryptedDataItem] as SlicePart;
-        // }));
+    }
+
+    async buildFile(file: FileMetadata) {
+        let fileChunkStart = this.chunksConsumed;
+        const byteLength = await file.encryptedDataItem!.getByteLength();
+        this.partsBeingBuilt.push([byteLength, this.sliceThroughFileDataItem.bind(this, file)] as SlicePart);
+
+        await this.pushZeroes(this.partsBeingBuilt, byteLength);
+
+        const totalChunks = Math.ceil(byteLength / FOLDER_FILE_BOUNDARY);
+        for(let q = 0; q < totalChunks; q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ file, q ]);
+
+        this.addArp(file, byteLength, fileChunkStart);
+    }
+
+    async addArp(file: FileMetadata | DataItem, byteLength: number, fileChunkStart: number) {
+        let arp = new Arp(ArpType.ARP_RAW_DATA, byteLength, (async (fileChunkStart: number, hashIdx: number) => {
+            const [file, chunkIdx] = this.chunkIdxToFile.get(fileChunkStart + hashIdx)!;
+            // console.log('arp file', file, chunkIdx);
+            const hash = file.chunkHashes[chunkIdx];
+            if (!hash) {
+                console.log('Chunk hash is not set, asking for arp hash of file:', file, chunkIdx);
+                console.log('chunkIdxToFile:', this.chunkIdxToFile);
+                console.log('fileChunkStart:', fileChunkStart);
+                console.log('hashIdx:', hashIdx);
+                console.log('chunksConsumed:', this.chunksConsumed);
+                console.log(file.chunkHashes);
+                throw new Error('Chunk hash is not set, asking for arp hash of file');
+            }
+            return hash;
+        }).bind(this, fileChunkStart));
+        let arpByteLength = await arp.getByteLength();
+
+        this.partsBeingBuilt.push([arpByteLength, this.sliceThroughFileDataItem.bind(this, arp)]);
+        await this.pushZeroes(this.partsBeingBuilt, arpByteLength);
+        fileChunkStart = this.chunksConsumed;
+        for(let q = 0; q < Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY); q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ arp, q ]);
+
+        while(arpByteLength > FOLDER_FILE_BOUNDARY) {
+            arp = new Arp(ArpType.ARP_NESTED, arpByteLength, (async (fileChunkStart: number, hashIdx: number) => {
+                const [a, chunkIdx] = this.chunkIdxToFile.get(fileChunkStart + hashIdx)!;
+                // console.log('a', a, a.chunkHashes);
+                const chunkHash = a.chunkHashes[chunkIdx];
+                if (!chunkHash) throw new Error('Chunk hash is not set, asking for hash of nested arp:' + a + ' ' + chunkIdx);
+                return chunkHash;
+            }).bind(this, fileChunkStart));
+            arpByteLength = await arp.getByteLength();
+            
+            this.partsBeingBuilt.push([arpByteLength, this.sliceThroughFileDataItem.bind(this, arp)]);
+            await this.pushZeroes(this.partsBeingBuilt, arpByteLength);
+            fileChunkStart = this.chunksConsumed;
+            for(let q = 0; q < Math.ceil(arpByteLength / FOLDER_FILE_BOUNDARY); q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ arp, q ]);
+        }
+
+        file.arp = arp;
+    }
+
+    async buildManifest() {
+        let fileChunkStart = this.chunksConsumed;
 
         const manifest = new FolderManifest(this.files);
         const manifestDataItem = await this.dataItemFactory.createDataItemWithSliceable(manifest, [
@@ -119,17 +155,32 @@ export class Folder extends Sliceable {
             {name: "ArFleet-DataItem-Type", value: "EncryptedAESPathManifest" }
         ], this.signer);
 
-        parts.push([ await this.encryptedManifestDataItem.getByteLength(), this.encryptedManifestDataItem ]);
+        const encManifestByteLength = await this.encryptedManifestDataItem.getByteLength();
+        // this.partsBeingBuilt.push([ encManifestByteLength, this.encryptedManifestDataItem ]);
 
-        const diff = await this.remainingZeroes(await this.encryptedManifestDataItem.getByteLength(), FOLDER_FILE_BOUNDARY);
-        if (diff > 0) {
-            parts.push([diff, this.zeroes.bind(this, 0, diff)] as SlicePart);
+        this.partsBeingBuilt.push([encManifestByteLength, this.sliceThroughFileDataItem.bind(this, this.encryptedManifestDataItem)]);
+        await this.pushZeroes(this.partsBeingBuilt, encManifestByteLength);
+        fileChunkStart = this.chunksConsumed;
+        for(let q = 0; q < Math.ceil(encManifestByteLength / FOLDER_FILE_BOUNDARY); q++) this.chunkIdxToFile.set(this.chunksConsumed++, [ this.encryptedManifestDataItem, q ]);
+
+        //
+
+        await this.addArp(this.encryptedManifestDataItem, encManifestByteLength, fileChunkStart);
+
+        console.log(this.partsBeingBuilt);
+        console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
+        console.log('ENCRYPTED MANIFEST DATA ITEM:', this.encryptedManifestDataItem);
+    }
+
+    async buildParts(): Promise<SliceParts> {
+        console.log('FILES:', this.files);
+        for (const file of this.files) {
+            await this.buildFile(file);
         }
 
-        console.log('FOLDER PARTS:', await this.dumpParts(parts));
-        // console.log('FOLDER PARTS:', await this.dumpParts());
+        await this.buildManifest();
 
-        return parts;
+        return this.partsBeingBuilt;
     }
 }
 

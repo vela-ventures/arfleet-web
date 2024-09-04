@@ -1,11 +1,12 @@
 import { b64UrlToBuffer, bufferTob64Url } from "./encodeUtils";
 import { serializeTags, Tag } from "./tags";
-import { stringToBuffer, concatBuffers, longTo8ByteArray } from "./buf";
+import { stringToBuffer, concatBuffers, longTo8ByteArray, byteArrayToLong, bufferToString, bufferToAscii } from "./buf";
 import { Hasher, HashType, makeHasher, sha256, sha384 } from "./hash";
 import { deepHash, deepHashChunks, DeepHashPointer } from "./deephashmod";
 import { downloadUint8ArrayAsFile } from "./extra";
-import { Sliceable, SliceParts } from "./sliceable";
+import { Sliceable, SliceableReader, SliceParts } from "./sliceable";
 import { AESEncryptedContainer } from "./aes";
+import { Arp, ArpReader } from "./arp";
 
 const HASH_CHUNK_SIZE = 128;
 class HashChunk {
@@ -32,9 +33,9 @@ export class DataItem extends Sliceable {
     dataItemId: string | null;
     private signature: Uint8Array | null;
     signer: Function;
-
-    hashChunkCount: number;
-    hashChunks: Map<number, HashChunk>;
+    
+    rollingHashChunkCount: number;
+    rollingHashChunks: Map<number, HashChunk>;
     highestHashedChunkIdx: number;
 
     // prepareToSign(): Promise<any>;
@@ -48,6 +49,9 @@ export class DataItem extends Sliceable {
 
     binaryHeaderCached: Uint8Array | null;
     binaryHeaderCachedDryRun: Uint8Array | null;
+
+    chunkHashes: Record<number, string>;
+    arp: Arp | null;
 
     constructor(
         dataByteLength: number,
@@ -73,12 +77,15 @@ export class DataItem extends Sliceable {
         this.cachedDataItemLength = null;
         this.dataItemId = null;
         this.signer = signer;
-        this.hashChunkCount = Math.ceil(dataByteLength / HASH_CHUNK_SIZE);
-        this.hashChunks = new Map<number, HashChunk>();
+        this.rollingHashChunkCount = Math.ceil(dataByteLength / HASH_CHUNK_SIZE);
+        this.rollingHashChunks = new Map<number, HashChunk>();
         this.highestHashedChunkIdx = -1;
 
         this.binaryHeaderCached = null;
         this.binaryHeaderCachedDryRun = null;
+
+        this.chunkHashes = {};
+        this.arp = null;
     }
 
     async prepareToSign(): Promise<Uint8Array> {
@@ -412,6 +419,9 @@ export class DataItem extends Sliceable {
 
       // Note: inverted! Data first, then header
 
+      // Magic bytes
+      parts.push([8, stringToBuffer("arf::~di")]);
+
       // Data length
       const dataLength = await this.getUnderlyingLength();
       parts.push([8, longTo8ByteArray(dataLength)]);
@@ -525,5 +535,56 @@ export class DataItemFactory {
     const dataItem = new DataItem(await container.getByteLength(), null, this.owner, this.target, await this.nextAnchor(), finalTags, container, signer.signer);
 
     return dataItem;
+  }
+}
+
+export class DataItemReader extends SliceableReader {
+  private inner: SliceableReader;
+  isInitialized: boolean;
+  dataLength: number;
+  dataOffset: number; 
+  headerOffset: number;
+
+  constructor(inner: SliceableReader) {
+    super();
+    this.inner = inner;
+    this.isInitialized = false;
+    this.dataLength = 0;
+    this.headerOffset = 0;
+    this.dataOffset = 0;
+  }
+
+  async init() {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    await this.inner.init();
+
+    const preHeader = await this.inner.slice(0, 16);
+
+    const magicBytes = await preHeader.slice(0, 8);
+    console.log("preHeader", preHeader);
+    console.log("magicBytes", bufferToString(magicBytes));
+    if (bufferToString(magicBytes) !== "arf::~di") throw new Error("Invalid magic bytes: " + bufferToAscii(magicBytes));
+
+    const dataLength = byteArrayToLong(await preHeader.slice(8, 16));
+    this.dataLength = dataLength;
+    this.dataOffset = 16;
+
+    const headerOffset = this.dataOffset + dataLength;
+    this.headerOffset = headerOffset;
+    // const header = await this.arpReader.slice(headerOffset, headerOffset + 16);
+    // console.log("READER header", header);
+  }
+
+  async slice(start: number, end: number): Promise<Uint8Array> {
+    if (!this.isInitialized) throw new Error("DataItemReader is not initialized");
+    if (start < 0 || end < 0) throw new Error("Invalid start and end");
+    if (start > end) throw new Error("Invalid start and end");
+    if (start >= this.dataLength || end > this.dataLength) throw new Error("Invalid start and end");
+    console.log('data offset', this.dataOffset);
+    console.log('start', start);
+    console.log('end', end);
+    return await this.inner.slice(this.dataOffset + start, this.dataOffset + end);
   }
 }

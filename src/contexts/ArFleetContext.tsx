@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { Buffer } from 'buffer';
 import { makeHasher, HashType, sha256, sha256hex, sha384hex } from '../helpers/hash';
-import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithSliceable, DataItemFactory } from '../helpers/dataitemmod';
+import { createDataItemWithDataHash, createDataItemWithBuffer, createDataItemWithSliceable, DataItemFactory, loadDataItemFromBuffer, DataItemReader } from '../helpers/dataitemmod';
 import { DeepHashPointer } from '../helpers/deephashmod';
-import { concatBuffers, stringToBuffer } from '../helpers/buf';
+import { bufferToAscii, bufferToString, concatBuffers, hexToBuffer, stringToBuffer } from '../helpers/buf';
 import { b64UrlToBuffer, bufferTob64Url, stringToB64Url } from '../helpers/encodeUtils';
 import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
@@ -24,6 +24,7 @@ import { rsaPublicKeyToPem } from '../helpers/rsa';
 import { Passthrough } from '@/helpers/passthrough';
 import { PassthroughAES } from '@/helpers/passthroughAES';
 import { downloadUint8ArrayAsFile } from '@/helpers/extra';
+import { Arp, ArpReader } from '@/helpers/arp';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -40,6 +41,7 @@ export class FileMetadata {
   encryptedDataItem: DataItem | null;
   aesContainer: AESEncryptedContainer | null;
   chunkHashes: Record<number, string>;
+  arp: Arp | null;
 
   constructor(file: File | FileMetadata) {
     if (file instanceof File) {
@@ -47,6 +49,7 @@ export class FileMetadata {
       this.size = file.size;
       this.path = (file as any).path || file.webkitRelativePath || file.name;
       this.chunkHashes = {};
+      this.arp = null;
     } else {
       Object.assign(this, file);
     }
@@ -112,6 +115,20 @@ export class Placement {
 
   static unserialize(data: any): Placement {
     return new Placement(data);
+  }
+
+  async downloadChunk(chunkHash: string) {
+    const response = await fetch(`${this.provider}/download/${chunkHash}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const chunk = new Uint8Array(await response.arrayBuffer());
+
+    const realHash = await sha256hex(chunk);
+    const realHashB64Url = bufferTob64Url(new Uint8Array(hexToBuffer(realHash)));
+    if (realHashB64Url !== chunkHash && realHash !== chunkHash) throw new Error('Chunk hash mismatch');
+
+    return chunk;
   }
 }
 
@@ -707,6 +724,43 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return chunkHashHex;
   };
 
+  const tryToRead = async (placement: Placement, finalHash: string) => {
+    // ask provider to get this chunk
+    const arp = new ArpReader(finalHash, placement);
+    await arp.init();
+    console.log('arp', arp);
+
+    const diread = new DataItemReader(arp);
+    await diread.init();
+    console.log('diread', diread);
+
+    const dataItemDecrypted = new DataItemReader(diread);
+    await dataItemDecrypted.init();
+
+    const data = await dataItemDecrypted.slice(0, dataItemDecrypted.dataLength);
+    console.log('read dataItem', bufferToAscii(data));
+
+    const manifest = JSON.parse(bufferToString(data));
+    console.log('manifest', manifest);
+
+    const lorem = manifest.paths["lorem.txt"];
+    const loremid = lorem.id;
+    // const loremarpid = bufferToHex(b64UrlToBuffer(lorem.arp));
+    const loremarpid = lorem.arp;
+
+    const loremArp = new ArpReader(loremarpid, placement);
+    await loremArp.init();
+    console.log('loremArp', loremArp);
+    console.log(bufferToAscii(await loremArp.slice(0, 50)));
+    
+    const loremDi = new DataItemReader(loremArp);
+    await loremDi.init();
+    console.log('loremDi', loremDi);
+
+    const loremData = await loremDi.slice(0, loremDi.dataLength);
+    console.log('loremData', bufferToAscii(loremData));
+  };
+
   verifyStorageRef.current = async (placement: Placement, assignment: StorageAssignment) => {
     const metadata = {
       placementId: placement.id,
@@ -715,6 +769,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     console.log('CHUNKS:', metadata.chunks);
     console.log('FOLDER:', assignment.folder);
     console.log('FILES:', assignment.folder!.files);
+    console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
+
+    const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
+    console.log('FINAL INDEX HASH:', finalIndexHash);
+    await tryToRead(placement, finalIndexHash);
 
     // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
     

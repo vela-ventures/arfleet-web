@@ -154,3 +154,8 @@ function isTwoParamFunction(func: any): func is (start: number, end: number) => 
 function isNoParamFunction(func: any): func is () => Promise<Uint8Array> {
   return typeof func === 'function' && func.length === 0;
 }
+
+export abstract class SliceableReader {
+  abstract slice(start: number, end: number): Promise<Uint8Array>;
+  abstract init(): Promise<void>;
+}

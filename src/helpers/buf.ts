@@ -26,6 +26,14 @@ export function concatBuffers(
 export function bufferToString(buffer: Uint8Array | ArrayBuffer): string {
     return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
 }
+
+export function bufferToAscii(buffer: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < buffer.byteLength; i++) {
+    s += String.fromCharCode(buffer[i]);
+  }
+  return s;
+}
   
 export function stringToBuffer(string: string): Uint8Array {
     return new TextEncoder().encode(string);

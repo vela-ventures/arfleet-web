@@ -4,6 +4,7 @@ import init, { Hasher, HashType, RsaEncryptor } from '../../wasm/pkg/wasm_helper
 import { concatBuffers, longTo8ByteArray } from "./buf.js";
 import { EncryptedContainer } from "./encryptedContainer.js";
 import { PLACEMENT_BLOB_CHUNK_SIZE } from "./placementBlob.js";
+import { sha256 } from "./hash.js";
 
 export const RSA_KEY_SIZE = 1024;
 
@@ -16,15 +17,15 @@ export const RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE = (PLACEMENT_BLOB_CHUNK_SIZE / 
 
 export const RSA_HEADER_SIZE = RSA_ENCRYPTED_CHUNK_SIZE;
 
-const log = (...args: any[]) => (true) ? console.log('[RSA]', ...args) : null;
+const log = (...args: any[]) => (false) ? console.log('[RSA]', ...args) : null;
 
 export class RSAContainer extends EncryptedContainer {
   rsaKeyPair: CryptoKeyPair;
   private cachedRsaKey: RsaKey | null = null;
   private isInitialized: boolean = false;
 
-  rsaChunkHashes: Map<number, Uint8Array> = new Map();
-  plaintextChunkHashes: Map<number, Uint8Array> = new Map();
+  // rsaChunkHashes: Map<number, Uint8Array> = new Map();
+  // plaintextChunkHashes: Map<number, Uint8Array> = new Map();
 
   constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
     super();
@@ -61,10 +62,16 @@ export class RSAContainer extends EncryptedContainer {
     const decryptedOffsetEnd = decryptedOffsetStart + RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE;
     
     const plainTextChunk = await this.inner!.slice(decryptedOffsetStart, decryptedOffsetEnd);
-
     if (plainTextChunk.byteLength !== RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE) {
       throw new Error(`Plain text chunk must be ${RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE} bytes but was ${plainTextChunk.byteLength}`);
     }
+
+    // const plainTextChunkPaddedForHashing = padRight(plainTextChunk, RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE);
+    // if (! this.plaintextChunkHashes.has(c)) {
+    //   const plaintextHash = await sha256(plainTextChunkPaddedForHashing);
+    //   this.plaintextChunkHashes.set(c, plaintextHash);
+    //   // console.log('PLAINTEXT CHUNK HASH', c, bufferToHex(plaintextHash));
+    // }
 
     const rsaChunksPerPlacementChunk = PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE;
 
