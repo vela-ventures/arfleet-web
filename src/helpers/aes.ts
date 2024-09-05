@@ -16,6 +16,7 @@ const AES_SALT_BYTE_LENGTH = 32;
 
 const log = (...args: any[]) => (false) ? console.log('[AES]', ...args) : null;
 
+// Set to false in production!
 const DEBUG_TURN_OFF_AES = false;
 
 export class AESEncryptedContainer extends EncryptedContainer {

@@ -233,7 +233,7 @@ export class ArpReader extends SliceableReader {
         const numHashes = Math.ceil(this.innerByteLength / this.chunkSize);
         const hashLength = (USE_BINARY) ? 32 : 32 * 2;
         for (let i = 0; i < numHashes; i++) {
-            const chunkHash = await this.manifest!.slice(34 + i * hashLength, 34 + (i+1) * hashLength);
+        const chunkHash = await this.manifest!.slice(34 + i * hashLength, 34 + (i+1) * hashLength);
             this.chunkHashes[i] = (USE_BINARY) ? bufferToHex(chunkHash) : bufferToString(chunkHash);
         }
 

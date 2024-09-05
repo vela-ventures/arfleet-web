@@ -25,6 +25,7 @@ export default function FileContentViewer() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
+  const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
 
   // console.log("assignment in FileContentViewer", assignment);
 
@@ -128,11 +129,11 @@ export default function FileContentViewer() {
                 size="sm"
                 variant="outline"
                 onClick={() => item.file && downloadFile(item.file)}
-                disabled={isDownloading}
+                disabled={downloadingFilePath === item.path}
                 className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 mr-2 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
                 <DownloadIcon className="w-4 h-4 mr-1" />
-                {isDownloading ? 'Downloading...' : 'Download'}
+                {downloadingFilePath === item.path ? 'Downloading...' : 'Download'}
               </Button>
               <Button
                 size="sm"
@@ -170,6 +171,7 @@ export default function FileContentViewer() {
 
   const downloadFile = async (file: FileMetadata) => {
     console.log('Downloading file:', file);
+    setDownloadingFilePath(file.path);
     setIsDownloading(true);
     // try {
       const placement = assignment.placements[0]; // Assuming we're using the first placement
@@ -221,6 +223,7 @@ export default function FileContentViewer() {
       URL.revokeObjectURL(url);
 
       setIsDownloading(false);
+      setDownloadingFilePath(null);
     // } catch (error) {
     //   throw error;
     //   console.error('Error downloading file:', error);
