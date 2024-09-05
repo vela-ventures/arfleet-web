@@ -233,131 +233,161 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
     setActiveLink(location.pathname)
   }, [location, setActiveLink])
 
+  const renderContent = () => {
+    if (!arConnected) {
+      return <NotConnectedUI theme={theme} />;
+    }
+
+    switch (passStatus) {
+      case 'checking':
+        return <CheckingPassUI />;
+      case 'notfound':
+        return <PassNotFoundUI address={address} />;
+      case 'error':
+        return <ErrorUI />;
+      default:
+        return (
+          <Routes>
+            {links.map((link, index) => (
+              <Route key={index} path={link.href} element={link.component} />
+            ))}
+          </Routes>
+        );
+    }
+  };
+
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       <Sidebar activeLink={activeLink} links={links} />
       <div className="flex flex-col h-screen overflow-hidden">
         <Header theme={theme} />
-
         <div className="flex-1 overflow-auto">
-          {arConnected ? (
-            passStatus === 'checking' ? (
-              <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800">
-                <Card className="w-[400px] shadow-lg">
-                  <CardHeader>
-                    <CardTitle className="text-2xl font-bold text-center">Checking ArFleet:Genesis Pass</CardTitle>
-                    <CardDescription className="text-center">Please wait while we verify your access</CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col items-center">
-                    <Loader2 className="h-8 w-8 animate-spin mb-4" />
-                    <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
-                      This may take a few moments...
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            ) : passStatus === 'notfound' ? (
-              <Dialog open={true}>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <AlertCircle className="h-5 w-5 text-yellow-500" />
-                      Pass Not Found
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="py-4">
-                    <p className="mb-4">
-                      You don't have an ArFleet:Genesis pass to connect to providers on the ArFleet testnet.
-                    </p>
-                    <p className="mb-4">
-                      ArFleet:Genesis passes are this asset on Bazar:
-                    </p>
-                    <a 
-                      href="https://bazar.arweave.dev/#/asset/kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline break-all"
-                    >
-                      https://bazar.arweave.dev/#/asset/kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw
-                    </a>
-                  </div>
-                  <div className="mt-4">
-                    After you have the pass on your wallet, click the button below to reload the page:
-                  </div>
-                  <div className="mt-4">
-                    <Button 
-                      onClick={() => window.location.reload()} 
-                      className="w-full"
-                    >
-                      Reload
-                    </Button>
-                  </div>
-                  <DialogFooter>
-                    <p className="text-sm text-gray-500">
-                      Connected wallet: {address.slice(0, 6)}...{address.slice(-4)}
-                    </p>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            ) : passStatus === 'error' ? (
-              <div className="flex flex-col items-center justify-center p-6 bg-red-50 dark:bg-red-900 rounded-lg shadow-md">
-                <AlertCircle className="h-12 w-12 text-red-500 dark:text-red-400 mb-4" />
-                <p className="text-lg text-red-700 dark:text-red-300 mb-4 text-center">
-                  An error occurred while checking your pass status.
-                </p>
-                <Button 
-                  onClick={() => window.location.reload()}
-                  className="bg-red-500 hover:bg-red-600 text-white"
-                >
-                  Retry
-                </Button>
-              </div>
-            ) : (
-              <Routes>
-                {links.map((link, index) => (
-                  <Route key={index} path={link.href} element={link.component} />
-                ))}
-                <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
-              </Routes>
-            )
-          ) : (
-            <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800 font-RobotoMono relative">
-
-              <Card className="w-[400px] shadow-lg shadow-gray-400 dark:shadow-gray-500 dark:shadow-sm z-10">
-                <CardHeader>
-                  <div className="flex justify-center mb-4">
-                    <img 
-                      src="/arfleet-logo-square.png" 
-                      style={{ filter: theme === 'dark' ? "invert(1) grayscale(1) opacity(0.5)" : "" }}
-                      alt="ArFleet Logo" 
-                      className="w-24 h-24 md:w-32 md:h-32"
-                    />
-                  </div>
-                  <CardTitle className="text-2xl font-bold text-center">Welcome to ArFleet</CardTitle>
-                  <CardDescription className="text-center">Connect your ArWeave wallet<br/>to get started</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center">
-                  <p className="mb-4 text-sm text-gray-600 dark:text-gray-300 text-center">
-                  </p>
-                  <ConnectButton className="w-full" />
-                </CardContent>
-              </Card>
-
-              <WallOfLines
-                className={"absolute inset-0 w-full h-full z-0 " + (theme === 'dark' ? "opacity-30" : "")}
-                lines={lineData}
-                minDelay={50}
-                maxDelay={600}
-                colors={theme === 'dark' ? ["#FF9797", "#8886FF", "#4BC24B"] : ["#FF9797", "#8886FF", "#4BC24B"]}
-                primaryColor={theme === 'dark' ? "#557799" : "#C8CCD8"}
-              />
-
-            </div>
-          )}
+          <Routes>
+            <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
+            <Route path="*" element={renderContent()} />
+          </Routes>
         </div>
       </div>
     </div>
   )
+}
+
+function NotConnectedUI({ theme }: { theme: string }) {
+  return (
+    <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800 font-RobotoMono relative">
+      <Card className="w-[400px] shadow-lg shadow-gray-400 dark:shadow-gray-500 dark:shadow-sm z-10">
+        <CardHeader>
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/arfleet-logo-square.png" 
+              style={{ filter: theme === 'dark' ? "invert(1) grayscale(1) opacity(0.5)" : "" }}
+              alt="ArFleet Logo" 
+              className="w-24 h-24 md:w-32 md:h-32"
+            />
+          </div>
+          <CardTitle className="text-2xl font-bold text-center">Welcome to ArFleet</CardTitle>
+          <CardDescription className="text-center">Connect your ArWeave wallet<br/>to get started</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center">
+          <p className="mb-4 text-sm text-gray-600 dark:text-gray-300 text-center">
+          </p>
+          <ConnectButton className="w-full" />
+        </CardContent>
+      </Card>
+
+      <WallOfLines
+        className={"absolute inset-0 w-full h-full z-0 " + (theme === 'dark' ? "opacity-30" : "")}
+        lines={lineData}
+        minDelay={50}
+        maxDelay={600}
+        colors={theme === 'dark' ? ["#FF9797", "#8886FF", "#4BC24B"] : ["#FF9797", "#8886FF", "#4BC24B"]}
+        primaryColor={theme === 'dark' ? "#557799" : "#C8CCD8"}
+      />
+    </div>
+  );
+}
+
+function CheckingPassUI() {
+  return (
+    <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800">
+      <Card className="w-[400px] shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-center">Checking ArFleet:Genesis Pass</CardTitle>
+          <CardDescription className="text-center">Please wait while we verify your access</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
+            This may take a few moments...
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PassNotFoundUI({ address }) {
+  return (
+    <Dialog open={true}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-500" />
+            Pass Not Found
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <p className="mb-4">
+            You don't have an ArFleet:Genesis pass to connect to providers on the ArFleet testnet.
+          </p>
+          <p className="mb-4">
+            ArFleet:Genesis passes are this asset on Bazar:
+          </p>
+          <a 
+            href="https://bazar.arweave.dev/#/asset/kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:underline break-all"
+          >
+            https://bazar.arweave.dev/#/asset/kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw
+          </a>
+        </div>
+        <div className="mt-4">
+          After you have the pass on your wallet, click the button below to reload the page:
+        </div>
+        <div className="mt-4">
+          <Button 
+            onClick={() => window.location.reload()} 
+            className="w-full"
+          >
+            Reload
+          </Button>
+        </div>
+        <DialogFooter>
+          <p className="text-sm text-gray-500">
+            Connected wallet: {address.slice(0, 6)}...{address.slice(-4)}
+          </p>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ErrorUI() {
+  return (
+    <div className="flex flex-col items-center justify-center p-6 bg-red-50 dark:bg-red-900 rounded-lg shadow-md">
+      <AlertCircle className="h-12 w-12 text-red-500 dark:text-red-400 mb-4" />
+      <p className="text-lg text-red-700 dark:text-red-300 mb-4 text-center">
+        An error occurred while checking your pass status.
+      </p>
+      <Button 
+        onClick={() => window.location.reload()}
+        className="bg-red-500 hover:bg-red-600 text-white"
+      >
+        Retry
+      </Button>
+    </div>
+  );
 }
 
 function Sidebar({ activeLink, links }) {
