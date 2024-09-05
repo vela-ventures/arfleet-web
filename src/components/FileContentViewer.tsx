@@ -1,14 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StorageAssignment, FileMetadata } from '../types';
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon } from 'lucide-react';
-import { concatBuffers } from '@/helpers/buf';
-import { useArFleet } from '../contexts/ArFleetContext';
+import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon, X, Check } from 'lucide-react';
+import { Placement, useArFleet } from '../contexts/ArFleetContext';
 import { ArpReader } from '@/helpers/arp';
 import { DataItemReader } from '@/helpers/dataitemmod';
 import { AESContainerReader } from '@/helpers/aes';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { bufferTob64Url, stringToB64Url } from '@/helpers/encodeUtils';
+import { encKeyFromMasterKeyAndSalt } from '@/helpers/encrypt';
 
 interface FileTreeItem {
   type: 'file' | 'folder';
@@ -26,8 +34,69 @@ export default function FileContentViewer() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
   const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [shareItem, setShareItem] = useState<FileTreeItem | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
 
-  // console.log("assignment in FileContentViewer", assignment);
+  useEffect(() => {
+    if (isShareDialogOpen && shareItem && masterKey) {
+      const getShareUrl = async () => {
+        try {
+          const url = await deriveShareUrl(shareItem, assignment!.placements[0], masterKey);
+          setShareUrl(url);
+        } catch (error) {
+          console.error('Error generating share URL:', error);
+          setShareUrl(null);
+        }
+      };
+      getShareUrl();
+    }
+  }, [isShareDialogOpen, shareItem, masterKey, assignment]);
+
+  const deriveShareUrl = async (shareItem: FileTreeItem, placement: Placement, masterKey: Uint8Array) => {
+    const placementProviderUrl = placement.provider;
+    const key = await deriveKey(masterKey, shareItem.file!, placement);
+    const keyB64 = bufferTob64Url(key);
+    return `https://example.com/download/${shareItem.file!.arpId}?key=${keyB64}&name=${encodeName(shareItem.file!.name)}&provider=${encodeURIComponent(placementProviderUrl)}`;
+  };
+
+  const deriveKey = async (masterKey: Uint8Array, file: FileMetadata, placement: Placement) => {
+    let arpId = file.arpId;
+    if (!arpId) {
+      if (file.arp) {
+        arpId = file.arp.chunkHashes[0];
+      } else {
+        throw new Error('ARP Id is not set');
+      }
+    }
+
+    const arpReader = new ArpReader(arpId, placement);
+    await arpReader.init();
+
+    const dataItemReader = new DataItemReader(arpReader);
+    await dataItemReader.init();
+
+    const aesReader = new AESContainerReader(dataItemReader, masterKey);
+    await aesReader.init();
+
+    const salt = aesReader.salt;
+    const key = await encKeyFromMasterKeyAndSalt(masterKey, salt);
+
+    return key;
+  };
+
+  const encodeName = (name: string) => {
+    return stringToB64Url(name);
+  };
+
+  const handleCopyUrl = () => {
+    if (shareUrl) {
+      navigator.clipboard.writeText(shareUrl);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
 
   if (!assignment) {
     return null;
@@ -89,6 +158,17 @@ export default function FileContentViewer() {
     return path.startsWith(hoveredFolder + '/');
   };
 
+  const openShareDialog = (item: FileTreeItem) => {
+    setShareItem(item);
+    setIsShareDialogOpen(true);
+  };
+
+  const closeShareDialog = () => {
+    setIsShareDialogOpen(false);
+    setShareItem(null);
+    setShareUrl(null);
+  };
+
   const renderFileTree = (items: FileTreeItem[], depth = 0) => {
     return items.map((item) => (
       <li
@@ -138,7 +218,7 @@ export default function FileContentViewer() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => console.log('Share clicked')} // Add your share logic here
+                onClick={() => openShareDialog(item)}
                 className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 mr-2 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
                 <ShareIcon className="w-4 h-4 mr-1" />
@@ -173,7 +253,7 @@ export default function FileContentViewer() {
     console.log('Downloading file:', file);
     setDownloadingFilePath(file.path);
     setIsDownloading(true);
-    // try {
+    try {
       const placement = assignment.placements[0]; // Assuming we're using the first placement
       
       if (!masterKey) {
@@ -224,15 +304,13 @@ export default function FileContentViewer() {
 
       setIsDownloading(false);
       setDownloadingFilePath(null);
-    // } catch (error) {
-    //   throw error;
-    //   console.error('Error downloading file:', error);
-    //   // You might want to show an error message to the user here
-    // } finally {
-    //   setIsDownloading(false);
-    // }
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      // You might want to show an error message to the user here
+    } finally {
+      setIsDownloading(false);
+    }
   };
-
 
   return (
     <div className="p-2 border-t">
@@ -246,6 +324,53 @@ export default function FileContentViewer() {
           </ul>
         </TabsContent>
       </Tabs>
+      <Dialog open={isShareDialogOpen} onOpenChange={closeShareDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Share file</DialogTitle>
+            <DialogClose className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogClose>
+          </DialogHeader>
+          <div className="flex flex-col space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Copy the URL below to share this file.
+            </p>
+            <div>
+              <p className="text-sm font-medium">Name/Path:</p>
+              <p className="text-sm text-muted-foreground">{shareItem?.path}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">URL:</p>
+              {shareUrl ? (
+                <p 
+                  className="text-sm text-muted-foreground break-all cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 p-1 rounded transition-colors duration-200"
+                  onClick={handleCopyUrl}
+                  title="Click to copy"
+                >
+                  {shareUrl}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">Generating URL...</p>
+              )}
+            </div>
+          </div>
+          <Button
+            onClick={handleCopyUrl}
+            className="w-full mt-4"
+            disabled={!shareUrl || isCopied}
+          >
+            {isCopied ? (
+              <>
+                <Check className="mr-2 h-4 w-4" /> Copied
+              </>
+            ) : (
+              'Copy URL'
+            )}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
