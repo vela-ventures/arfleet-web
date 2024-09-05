@@ -16,7 +16,7 @@ const AES_SALT_BYTE_LENGTH = 32;
 
 const log = (...args: any[]) => (true) ? console.log('[AES]', ...args) : null;
 
-const DEBUG_TURN_OFF_AES = false;
+const DEBUG_TURN_OFF_AES = true;
 
 export class AESEncryptedContainer extends EncryptedContainer {
     salt: Uint8Array;

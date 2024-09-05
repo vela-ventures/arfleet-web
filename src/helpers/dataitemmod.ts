@@ -7,6 +7,7 @@ import { downloadUint8ArrayAsFile } from "./extra";
 import { Sliceable, SliceableReader, SliceParts } from "./sliceable";
 import { AESEncryptedContainer } from "./aes";
 import { Arp, ArpReader } from "./arp";
+import { CallbackQueue } from "./callbackQueue";
 
 const HASH_CHUNK_SIZE = 128;
 class HashChunk {
@@ -33,6 +34,8 @@ export class DataItem extends Sliceable {
     dataItemId: string | null;
     private signature: Uint8Array | null;
     signer: Function;
+
+    forceCalcQueue: CallbackQueue;
     
     rollingHashChunkCount: number;
     rollingHashChunks: Map<number, HashChunk>;
@@ -80,6 +83,7 @@ export class DataItem extends Sliceable {
         this.rollingHashChunkCount = Math.ceil(dataByteLength / HASH_CHUNK_SIZE);
         this.rollingHashChunks = new Map<number, HashChunk>();
         this.highestHashedChunkIdx = -1;
+        this.forceCalcQueue = new CallbackQueue();
 
         this.binaryHeaderCached = null;
         this.binaryHeaderCachedDryRun = null;
@@ -131,9 +135,10 @@ export class DataItem extends Sliceable {
     async setSignature(signature: Uint8Array): Promise<void> {
       const dataItemId = bufferTob64Url(await sha256(signature));
 
-      if (this.signature) {
+      if (this.signature !== null) {
         // compare signatures
         if (bufferToHex(signature) !== bufferToHex(this.signature)) {
+          throw new Error("Signature already set");
           // console.log("signature already set", bufferToHex(signature), bufferToHex(this.signature));
           // throw new Error("Signature already set");
           // Quitely ignore
@@ -179,7 +184,8 @@ export class DataItem extends Sliceable {
         await this.sign();
       }
 
-      const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
+      // const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
+      const signature = new Uint8Array(this.signatureLength).fill(0);
 
       const _target = this.target ? b64UrlToBuffer(this.target) : null;
       const target_length = 1 + (_target?.byteLength ?? 0);
@@ -396,7 +402,17 @@ export class DataItem extends Sliceable {
     }
 
     async forceCalcDataHash() {
-      if (this.dataHash) return;
+      if (this.forceCalcQueue.status === "done") {
+        return this.forceCalcQueue.result;
+      }
+      if (this.forceCalcQueue.status === "calculating") {
+        return new Promise((resolve, reject) => { this.forceCalcQueue.add([resolve, reject]); });
+      }
+      this.forceCalcQueue.status = "calculating";
+
+      //
+
+      if (this.dataHash) throw new Error("Data hash already calculated");
       
       this.dataHash = null;
       const totalLength = await this.getUnderlyingLength();
@@ -418,6 +434,10 @@ export class DataItem extends Sliceable {
 
       // signature
       await this.sign();
+      
+      //
+
+      this.forceCalcQueue.done(this.dataHash);
 
       return this.dataHash;
     }

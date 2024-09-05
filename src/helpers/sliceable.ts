@@ -2,6 +2,7 @@ import { FileMetadata } from "@/contexts/ArFleetContext";
 import { concatBuffers } from "./buf";
 import { readFileChunk } from "./buf";
 import { downloadUint8ArrayAsFile } from "./extra";
+import { CallbackQueue } from "./callbackQueue";
 
 /*
 *   Slice(start, end) means:
@@ -34,6 +35,7 @@ const log = (...args: any[]) => (true) ? console.log('[Sliceable]', ...args) : n
 export abstract class Sliceable {
     partsCached: SliceParts | null = null;
     byteLengthCached: number | null = null;
+    buildPartsQueue: CallbackQueue = new CallbackQueue();
 
     log: (...args: any[]) => void;
 
@@ -43,7 +45,20 @@ export abstract class Sliceable {
 
     async getParts(): Promise<SliceParts> {
         if (this.partsCached !== null) return this.partsCached;
-        return this.partsCached = await this.buildParts();
+
+        if (this.buildPartsQueue.status === "done") {
+            return this.buildPartsQueue.result;
+        }
+        if (this.buildPartsQueue.status === "calculating") {
+            return new Promise((resolve, reject) => { this.buildPartsQueue.add([resolve, reject]); });
+        }
+        this.buildPartsQueue.status = "calculating";
+
+        this.partsCached = await this.buildParts();
+
+        this.buildPartsQueue.done(this.partsCached);
+
+        return this.partsCached;
     }
 
     async zeroes(start: number, end: number): Promise<Uint8Array> {

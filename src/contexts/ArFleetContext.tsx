@@ -26,6 +26,7 @@ import { PassthroughAES } from '@/helpers/passthroughAES';
 import { downloadUint8ArrayAsFile } from '@/helpers/extra';
 import { Arp, ArpReader } from '@/helpers/arp';
 import { Promise as BluebirdPromise } from 'bluebird';
+import { CallbackQueue } from '@/helpers/callbackQueue';
 
 const CHUNK_SIZE = 8192;
 const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
@@ -46,6 +47,7 @@ export class FileMetadata {
   arpId: string | null;
 
   constructor(file: File | FileMetadata) {
+    this.chunkHashes = {};
     if (file instanceof File) {
       this.name = file.name;
       this.size = file.size;
@@ -53,12 +55,12 @@ export class FileMetadata {
       this.chunkHashes = {};
       this.arp = null;
       this.arpId = null;
+      this.dataItem = null;
+      this.encryptedDataItem = null;
+      this.aesContainer = null;
     } else {
       Object.assign(this, file);
     }
-    this.dataItem = null;
-    this.encryptedDataItem = null;
-    this.aesContainer = null;
   }
 
   serialize() {
@@ -147,6 +149,7 @@ export class StorageAssignment {
   folder: Folder | null;
   encryptedManifestArp: string | null;
   walletSigner: WalletSigner | null;
+  processQueue: CallbackQueue;
 
   constructor(data: Partial<StorageAssignment>) {
     // initial values
@@ -160,6 +163,7 @@ export class StorageAssignment {
     this.folder = null;
     this.encryptedManifestArp = data.encryptedManifestArp || null;
     this.walletSigner = null;
+    this.processQueue = new CallbackQueue();
 
     Object.assign(this, data);
     this.files = (this.files || []).map(f => f instanceof FileMetadata ? f : new FileMetadata(f));
@@ -531,7 +535,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const updatedAssignment = new StorageAssignment({
             ...assignment,
             placements: assignment.placements.map(p => new Placement(p)),
-            files: assignment.files.map(f => new FileMetadata(f))
+            // files: assignment.files
           });
 
           // Persist the updated assignment to AODB
@@ -717,7 +721,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placementId: placement.id,
       chunks: placement.chunks || {},
     };
-    // console.log('CHUNKS:', metadata.chunks);
+    console.log('CHUNKS:', metadata.chunks, {placementId: placement.id, assignmentId: assignment.id});
     // console.log('FOLDER:', assignment.folder);
     // console.log('FILES:', assignment.folder!.files);
     // console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
@@ -822,7 +826,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           await processPlacementRef.current?.(placement);
           updateAssignmentProgress(placement.assignmentId);
         }
-      }, { concurrency: 1 }); // Adjust concurrency as needed
+      }, { concurrency: 3 }); // Adjust concurrency as needed
       
       // Remove processed placements from the queue
       placementQueueRef.current = placementQueueRef.current.filter(
@@ -836,6 +840,16 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [updateAssignmentProgress]);
 
   const processAssignment = async (assignment: StorageAssignment) => {
+    if (assignment.processQueue.status === 'done') {
+      return;
+    }
+    if (assignment.processQueue.status === 'calculating') {
+      return new Promise((resolve, reject) => { assignment.processQueue.add([resolve, reject]); });
+    }
+    assignment.processQueue.status = 'calculating';
+    
+    //
+
     setAssignmentsState(prev => prev.map(a => 
       a.id === assignment.id ? { ...a, status: 'chunking' } : a
     ));
@@ -877,6 +891,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     if (!masterKey) throw new Error('Master key not found');
+    console.log('creating folder');
     const folder = await createFolder(updatedFiles, assignment.dataItemFactory!, walletSigner, masterKey);
 
     const tmpId: string = (new Date()).getTime().toString();
@@ -931,6 +946,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log(`Data item:`, file.dataItem);
       console.log('---');
     });
+
+    assignment.processQueue.done(assignment);
   }; // end processAssignment
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {

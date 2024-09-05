@@ -67,7 +67,7 @@ export class Folder extends Sliceable {
             chunkPadded.set(chunk);
 
             const hash = await sha256hex(chunkPadded);
-            // console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
+            console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
             fileOrArp.chunkHashes[curChunkIdx] = hash;
 
             chunkBufs.push(chunkPadded);
