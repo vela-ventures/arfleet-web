@@ -32,10 +32,7 @@ export abstract class EncryptedContainer extends Sliceable {
 
   async getEncryptedByteLength(): Promise<number> {
     const originalLength = await this.inner!.getByteLength();
-    console.log("ORIGINALLENGTH", originalLength);
     this.chunkCount = Math.ceil(originalLength / this.underlyingChunkSize);
-    console.log("DIVISION", originalLength / this.underlyingChunkSize);
-    console.log("CHUNKCOUNT", this.chunkCount);
     return this.chunkCount * this.encryptedChunkSize;
   }
 

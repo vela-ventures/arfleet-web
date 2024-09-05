@@ -184,8 +184,7 @@ export class DataItem extends Sliceable {
         await this.sign();
       }
 
-      // const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
-      const signature = new Uint8Array(this.signatureLength).fill(0);
+      const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
 
       const _target = this.target ? b64UrlToBuffer(this.target) : null;
       const target_length = 1 + (_target?.byteLength ?? 0);

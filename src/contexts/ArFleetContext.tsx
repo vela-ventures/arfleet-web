@@ -128,7 +128,7 @@ export class Placement {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const chunk = new Uint8Array(await response.arrayBuffer());
-    console.log("DDD  downloaded chunk", bufferToHex(chunk));
+    // console.log("downloaded chunk", bufferToHex(chunk));
 
     const realHash = await sha256hex(chunk);
     const realHashB64Url = bufferTob64Url(new Uint8Array(hexToBuffer(realHash)));
@@ -721,7 +721,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placementId: placement.id,
       chunks: placement.chunks || {},
     };
-    console.log('CHUNKS:', metadata.chunks, {placementId: placement.id, assignmentId: assignment.id});
+    // console.log('CHUNKS:', metadata.chunks, {placementId: placement.id, assignmentId: assignment.id});
     // console.log('FOLDER:', assignment.folder);
     // console.log('FILES:', assignment.folder!.files);
     // console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);

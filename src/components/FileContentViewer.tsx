@@ -26,7 +26,7 @@ export default function FileContentViewer() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null);
 
-  console.log("assignment in FileContentViewer", assignment);
+  // console.log("assignment in FileContentViewer", assignment);
 
   if (!assignment) {
     return null;

@@ -57,7 +57,7 @@ export class Folder extends Sliceable {
             const chunkEnd = Math.min(chunkStartByte + FOLDER_FILE_BOUNDARY, byteLength);
             const chunk = await sliceable.slice(chunkStartByte, chunkEnd);
 
-            console.log('chunk', {curChunkIdx, chunkLength: chunk.byteLength, expected: chunkEnd - chunkStartByte});
+            // console.log('chunk', {curChunkIdx, chunkLength: chunk.byteLength, expected: chunkEnd - chunkStartByte});
 
             if (chunk.byteLength !== chunkEnd - chunkStartByte) {
                 throw new Error('Chunk byte length is not equal to the expected byte length');
@@ -67,7 +67,7 @@ export class Folder extends Sliceable {
             chunkPadded.set(chunk);
 
             const hash = await sha256hex(chunkPadded);
-            console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
+            // console.log('effective hash of chunk:', new TextDecoder().decode(chunkPadded), chunkPadded.byteLength, hash, curChunkIdx, fileOrArp);
             fileOrArp.chunkHashes[curChunkIdx] = hash;
 
             chunkBufs.push(chunkPadded);

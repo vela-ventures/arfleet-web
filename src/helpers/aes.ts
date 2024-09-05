@@ -14,9 +14,9 @@ const AES_UNDERLYING_CHUNK_SIZE = AES_CHUNK_SIZE - AES_OVERHEAD;
 
 const AES_SALT_BYTE_LENGTH = 32;
 
-const log = (...args: any[]) => (true) ? console.log('[AES]', ...args) : null;
+const log = (...args: any[]) => (false) ? console.log('[AES]', ...args) : null;
 
-const DEBUG_TURN_OFF_AES = true;
+const DEBUG_TURN_OFF_AES = false;
 
 export class AESEncryptedContainer extends EncryptedContainer {
     salt: Uint8Array;
@@ -80,11 +80,8 @@ export class AESEncryptedContainer extends EncryptedContainer {
         //     chunkXored[i] = chunk[i] ^ chain[i];
         // }
         const chunkXored = expandedChunk;
-        // console.log("chunkXored", bufferToAscii(chunkXored));
         
         const encryptedChunk = new Uint8Array(await encryptAes(chunkXored, this.secretKey, iv, isLastChunk));
-        console.log("Q encryptedChunk", bufferToAscii(encryptedChunk));
-        console.log("Q encryptedChunk byte length", encryptedChunk.byteLength);
         this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
         
         // Keep only the last N chunks in the cache
@@ -139,7 +136,7 @@ export const encryptAes = async (file: Uint8Array, key: Uint8Array, iv: Uint8Arr
     //     throw new Error(`Invalid overhead: ${overhead}, expected ${AES_OVERHEAD}`);
     // }
 
-    console.log("ciphertextArrayBuffer.byteLength", ciphertextArrayBuffer.byteLength);
+    // console.log("ciphertextArrayBuffer.byteLength", ciphertextArrayBuffer.byteLength);
     // make sure the length is correct
     let result;
     if (ciphertextArrayBuffer.byteLength === AES_CHUNK_SIZE) {
@@ -153,7 +150,7 @@ export const encryptAes = async (file: Uint8Array, key: Uint8Array, iv: Uint8Arr
         throw new Error(`Invalid length: ${ciphertextArrayBuffer.byteLength}, expected ${AES_CHUNK_SIZE}`);
     }
 
-    console.log("result", bufferToAscii(result));
+    // console.log("result", bufferToAscii(result));
 
     return result;
 }
@@ -163,7 +160,7 @@ export const decryptAes = async (fileArrayBuffer: Uint8Array, key: Uint8Array, i
         return fileArrayBuffer.slice(0, -1);
     }
 
-    console.log("decryptAes", fileArrayBuffer.byteLength, bufferToAscii(fileArrayBuffer));
+    // console.log("decryptAes", fileArrayBuffer.byteLength, bufferToAscii(fileArrayBuffer));
 
     // prepare the secret key for encryption
     const secretKey = await crypto.subtle.importKey('raw', key, {
@@ -244,9 +241,6 @@ export class AESContainerReader extends SliceableReader {
                 thisCiphertext = ciphertextChunks[chunkIdx];
             } else {
                 thisCiphertext = await this.ciphertext.slice(this.dataStartPos + chunkIdx * AES_CHUNK_SIZE, this.dataStartPos + (chunkIdx + 1) * AES_CHUNK_SIZE);
-                console.log(this.ciphertext, this.ciphertext.dataLength)
-                // downloadUint8ArrayAsFile(await this.ciphertext.slice(0, this.ciphertext.dataLength), `ciphertext-${chunkIdx}.bin`);
-                console.log("FULL SLICED CIPHERTEXT", bufferToAscii(await this.ciphertext.slice(0, this.ciphertext.dataLength)));
                 ciphertextChunks[chunkIdx] = thisCiphertext;
             }
 
@@ -266,7 +260,7 @@ export class AESContainerReader extends SliceableReader {
             const iv = (chunkIdx === 0) ? this.iv : prevCiphertext.slice(-AES_IV_BYTE_LENGTH);
 
             const plaintextChunk = await decryptAes(thisCiphertext, this.key, iv);
-            console.log("plaintextChunk", bufferToAscii(plaintextChunk), plaintextChunk.length, chunkIdx);
+            // console.log("plaintextChunk", bufferToAscii(plaintextChunk), plaintextChunk.length, chunkIdx);
 
             // make sure it's correct size
             if (plaintextChunk.length !== AES_UNDERLYING_CHUNK_SIZE) {

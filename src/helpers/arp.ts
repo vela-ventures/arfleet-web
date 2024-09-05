@@ -153,15 +153,15 @@ export class ArpReader extends SliceableReader {
         const totalChunks = finalChunkIdx - startChunkIdx + 1;
         const extendedLen = totalChunks * this.chunkSize;
 
-        console.log("startChunkIdx", startChunkIdx);
-        console.log("finalChunkIdx", finalChunkIdx);
-        console.log("totalChunks", totalChunks);
-        console.log("extendedLen", extendedLen);
-        console.log("this.chunkSize", this.chunkSize);
+        // console.log("startChunkIdx", startChunkIdx);
+        // console.log("finalChunkIdx", finalChunkIdx);
+        // console.log("totalChunks", totalChunks);
+        // console.log("extendedLen", extendedLen);
+        // console.log("this.chunkSize", this.chunkSize);
 
         const buf = new Uint8Array(extendedLen);
         for (let i = 0; i < totalChunks; i++) {
-            console.log("startChunkIdx + i", startChunkIdx + i);
+            // console.log("startChunkIdx + i", startChunkIdx + i);
             const chunkHash = this.chunkHashes[startChunkIdx + i];
             if (!chunkHash) throw new Error('Chunk hash is not set');
 
@@ -170,18 +170,16 @@ export class ArpReader extends SliceableReader {
             }
 
             let chunk = this.cacheChunks.get(startChunkIdx + i);
-            console.log("cached chunk", bufferToHex(chunk), startChunkIdx + i);
+            // console.log("cached chunk", bufferToHex(chunk), startChunkIdx + i);
 
             if (!chunk) {
                 chunk = await this.placement.downloadChunk(chunkHash);
-                console.log("downloaded chunk", bufferToHex(chunk), startChunkIdx + i);
+                // console.log("downloaded chunk", bufferToHex(chunk), startChunkIdx + i);
                 this.cacheChunks.set(startChunkIdx + i, chunk);
             }
             
             buf.set(chunk, i * this.chunkSize);
         }
-
-        console.log("bufbuf", bufferToHex(buf));
 
         // Keep only 64 chunks in memory
         if (this.cacheChunks.size > 64) {
@@ -239,6 +237,6 @@ export class ArpReader extends SliceableReader {
             this.chunkHashes[i] = (USE_BINARY) ? bufferToHex(chunkHash) : bufferToString(chunkHash);
         }
 
-        console.log('chunk hashes', this.chunkHashes);
+        // console.log('chunk hashes', this.chunkHashes);
     }
 }

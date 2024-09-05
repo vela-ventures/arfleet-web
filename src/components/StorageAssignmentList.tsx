@@ -18,8 +18,8 @@ export default function StorageAssignmentList({
   fetchAndProcessManifest,
   masterKey,
 }: StorageAssignmentListProps) {
-  console.log('StorageAssignmentList rendering', assignments.length);
-  console.log("Assignments in StorageAssignmentList:", assignments);
+  // console.log('StorageAssignmentList rendering', assignments.length);
+  // console.log("Assignments in StorageAssignmentList:", assignments);
   return (
     <div className="w-64 border-r overflow-y-auto">
       <h2 className="text-lg font-semibold p-4">Assignments</h2>

@@ -106,7 +106,7 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
 
   useEffect(() => {
     // This effect will run whenever the assignments state changes
-    console.log('Assignments updated:', assignments);
+    // console.log('Assignments updated:', assignments);
     // You can add any logic here that needs to run when assignments change
   }, [assignments]);
 
