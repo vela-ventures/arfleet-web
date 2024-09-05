@@ -45,7 +45,7 @@ export class Folder extends Sliceable {
         const sliceable = (fileOrArp instanceof FileMetadata) ? fileOrArp.encryptedDataItem! : fileOrArp;
 
         const byteLength = await sliceable.getByteLength();
-        
+
         const chunkIdxStart = Math.floor(start / FOLDER_FILE_BOUNDARY);
         const chunkIdxFinal = Math.floor((end-1) / FOLDER_FILE_BOUNDARY);
 
@@ -54,10 +54,16 @@ export class Folder extends Sliceable {
         for(let curChunkIdx = chunkIdxStart; curChunkIdx <= chunkIdxFinal; curChunkIdx++) {
             // const chunk = await file.encryptedDataItem!.slice(curChunkIdx * FOLDER_FILE_BOUNDARY, Math.min(curChunkIdx * FOLDER_FILE_BOUNDARY + FOLDER_FILE_BOUNDARY, byteLength));
             const chunkStartByte = curChunkIdx * FOLDER_FILE_BOUNDARY;
-            const chunkSize = (curChunkIdx === chunkIdxFinal) ? byteLength % FOLDER_FILE_BOUNDARY : FOLDER_FILE_BOUNDARY;
-            const chunk = await sliceable.slice(chunkStartByte, chunkStartByte + chunkSize);
+            const chunkEnd = Math.min(chunkStartByte + FOLDER_FILE_BOUNDARY, byteLength);
+            const chunk = await sliceable.slice(chunkStartByte, chunkEnd);
 
-            const chunkPadded = new Uint8Array(FOLDER_FILE_BOUNDARY).fill(0);
+            console.log('chunk', {curChunkIdx, chunkLength: chunk.byteLength, expected: chunkEnd - chunkStartByte});
+
+            if (chunk.byteLength !== chunkEnd - chunkStartByte) {
+                throw new Error('Chunk byte length is not equal to the expected byte length');
+            }
+
+            const chunkPadded = new Uint8Array(FOLDER_FILE_BOUNDARY).fill(0x00);
             chunkPadded.set(chunk);
 
             const hash = await sha256hex(chunkPadded);
@@ -154,7 +160,7 @@ export class Folder extends Sliceable {
 
         const salt = createSalt();
         const iv = createSalt(AES_IV_BYTE_LENGTH);
-        const secretKey = await encKeyFromMasterKeyAndSalt(this.masterKey, salt);  
+        const secretKey = await encKeyFromMasterKeyAndSalt(this.masterKey, salt);
         const encContainer = new AESEncryptedContainer(manifestDataItem, salt, secretKey, iv);
 
         this.encryptedManifestDataItem = await this.dataItemFactory.createDataItemWithSliceable(encContainer, [
@@ -173,8 +179,8 @@ export class Folder extends Sliceable {
 
         await this.addArp(this.encryptedManifestDataItem, encManifestByteLength, fileChunkStart);
 
-        // console.log(this.partsBeingBuilt);
-        // console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
+        console.log(this.partsBeingBuilt);
+        console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
         // console.log('ENCRYPTED MANIFEST DATA ITEM:', this.encryptedManifestDataItem);
     }
 

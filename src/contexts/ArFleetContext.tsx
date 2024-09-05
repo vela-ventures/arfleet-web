@@ -9,7 +9,7 @@ import { createDataItemSigner } from "@permaweb/aoconnect";
 import { bufferToHex } from '../helpers/buf';
 // import { experiment } from '../helpers/rsa';
 import { run } from '../helpers/hash';
-import { generateRSAKeyPair, keyPairToRsaKey, RSAContainer } from '../helpers/rsa';
+import { generateRSAKeyPair, keyPairToRsaKey, RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE, RSAContainer } from '../helpers/rsa';
 import { arfleetPrivateHash, createSalt, encKeyFromMasterKeyAndSalt } from '../helpers/encrypt';
 import { readFileChunk } from '../helpers/buf';
 import { DataItem } from '../helpers/dataitemmod';
@@ -126,6 +126,7 @@ export class Placement {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const chunk = new Uint8Array(await response.arrayBuffer());
+    console.log("DDD  downloaded chunk", bufferToHex(chunk));
 
     const realHash = await sha256hex(chunk);
     const realHashB64Url = bufferTob64Url(new Uint8Array(hexToBuffer(realHash)));
@@ -721,6 +722,29 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // console.log('FILES:', assignment.folder!.files);
     // console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
 
+    // const file0 = assignment.folder!.files[0];
+    // const file0EncryptedDataItem = file0.encryptedDataItem;
+    // console.log("file0EncryptedDataItem", file0EncryptedDataItem);
+    // console.log("file0EncryptedDataItem slice", await file0EncryptedDataItem!.getByteLength(), bufferToHex(await file0EncryptedDataItem!.slice(0, await file0EncryptedDataItem!.getByteLength())));
+    // const folder = assignment.folder!;
+    // console.log("folder", folder);
+    // console.log("folder.slice", await folder.getByteLength(), bufferToHex(await folder.slice(0, await folder.getByteLength())));
+    // let cs = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE;
+    // for (let i = 0; i < Math.ceil(await folder.getByteLength() / cs); i++) {
+    //   const chunk = await folder.slice(i * cs, i * cs + cs);
+    //   console.log("pchunk", i, chunk.byteLength, bufferToHex(await chunk.slice(0, chunk.byteLength)));
+    // }
+    // cs = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE - 10;
+    // for (let i = 0; i < Math.ceil(await folder.getByteLength() / cs); i++) {
+    //   const chunk = await folder.slice(i * cs, i * cs + cs);
+    //   console.log("pchunk", i, chunk.byteLength, bufferToHex(await chunk.slice(0, chunk.byteLength)));
+    // }
+    // cs = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE * 3;
+    // for (let i = 0; i < Math.ceil(await folder.getByteLength() / cs); i++) {
+    //   const chunk = await folder.slice(i * cs, i * cs + cs);
+    //   console.log("pchunk", i, chunk.byteLength, bufferToHex(await chunk.slice(0, chunk.byteLength)));
+    // }
+
     // const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
     // // Update the assignment with the finalIndexHash as arpId
     // const updatedAssignment = new StorageAssignment({
@@ -1019,6 +1043,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const data = await dataItemDecrypted.slice(0, dataItemDecrypted.dataLength);
       // console.log('data', data);
 
+      console.log('manifest', bufferToAscii(data));
+      console.log('manifest length', data.byteLength);
       const manifestData = JSON.parse(bufferToString(data));
       console.log('Manifest data:', manifestData);
 

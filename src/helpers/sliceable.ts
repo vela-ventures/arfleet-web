@@ -47,7 +47,7 @@ export abstract class Sliceable {
     }
 
     async zeroes(start: number, end: number): Promise<Uint8Array> {
-      return new Uint8Array(end - start).fill(0);
+      return new Uint8Array(end - start).fill(0x00);
     }
 
     async getByteLength(): Promise<number> {
