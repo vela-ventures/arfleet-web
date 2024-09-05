@@ -5,6 +5,8 @@ import { Link as RouterLink } from 'react-router-dom'
 import { ConnectButton } from "arweave-wallet-kit"
 import WalletWrapper from './components/WalletWrapper'
 import MyArFleet from './components/MyArFleet'
+import Providers from './components/Providers'
+import Settings from './components/Settings'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
@@ -25,12 +27,9 @@ import { ArFleetProvider, useArFleet } from './contexts/ArFleetContext';
 import WallOfLines from './components/WallOfLines'
 import React from 'react';
 import FileDownload from './components/FileDownload';
+import { Toaster } from "@/components/ui/toaster"
 
 // Components for other routes (placeholder)
-const Dashboard = () => <div>Dashboard</div>
-const Settings = () => <div>Settings</div>
-const Products = () => <div>Products</div>
-const Customers = () => <div>Customers</div>
 
 // Global type declarations
 declare global {
@@ -91,6 +90,7 @@ function App() {
           <AppContent setActiveLink={setActiveLink} activeLink={activeLink} theme={theme} isGlobalDragActive={isGlobalDragActive} />
         </Router>
       </ArFleetProvider>
+      <Toaster />
     </WalletWrapper>
   )
 }
@@ -125,11 +125,11 @@ function Header({ theme }) {
               <span className="sr-only">Acme Inc</span>
             </RouterLink>
             <RouterLink
-              to="/"
-              className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
+              to="/providers"
+              className="mx-[-0.65rem] flex items-center gap-4 rounded-xl bg-muted px-3 py-2 text-foreground hover:text-foreground"
             >
-              <Home className="h-5 w-5" />
-              Dashboard
+              <Server className="h-5 w-5" />
+              Providers
             </RouterLink>
             <RouterLink
               to="/"
@@ -140,27 +140,6 @@ function Header({ theme }) {
               <Badge className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
                 6
               </Badge>
-            </RouterLink>
-            <RouterLink
-              to="/"
-              className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
-            >
-              <Package className="h-5 w-5" />
-              Products
-            </RouterLink>
-            <RouterLink
-              to="/"
-              className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
-            >
-              <Users className="h-5 w-5" />
-              Customers
-            </RouterLink>
-            <RouterLink
-              to="/"
-              className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
-            >
-              <LineChart className="h-5 w-5" />
-              Analytics
             </RouterLink>
           </nav>
           <div className="mt-auto">
@@ -239,13 +218,13 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
 
   const links = [
     { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet isGlobalDragActive={isGlobalDragActive} masterKey={masterKey} /> },
-    { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Dashboard /> },
-    { name: "Files", href: "/files", icon: <FolderArchive className="h-4 w-4" />, component: <Dashboard /> },
+    { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Providers /> },
+    // { name: "Files", href: "/files", icon: <FolderArchive className="h-4 w-4" />, component: <Dashboard /> },
     // { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
     { name: "Settings", href: "/settings", icon: <CogIcon className="h-4 w-4" />, component: <Settings /> },
     { type: 'separator' },
-    { name: "Website", href: "https://arfleet.io", icon: <Globe className="h-4 w-4" />, component: <Customers /> },
-    { name: "Documentation", href: "https://docs.arfleet.io", icon: <FileText className="h-4 w-4" />, component: <Customers /> },
+    { name: "Website", href: "https://arfleet.io", icon: <Globe className="h-4 w-4" />, component: <div /> },
+    { name: "Documentation", href: "https://docs.arfleet.io", icon: <FileText className="h-4 w-4" />, component: <div /> },
   ];
 
   useEffect(() => {
@@ -261,12 +240,8 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
         <div className="flex-1 overflow-auto">
           {arConnected ? (
             <Routes>
-              {links.map((link) => (
-                <Route 
-                  key={link.href} 
-                  path={link.href} 
-                  element={link.component}
-                />
+              {links.map((link, index) => (
+                <Route key={index} path={link.href} element={link.component} />
               ))}
               <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
             </Routes>
@@ -327,7 +302,7 @@ function Sidebar({ activeLink, links }) {
                 <hr key={`separator-${index}`} className="my-2 border-t border-gray-200 dark:border-gray-700" />
               ) : (
                 <RouterLink
-                  key={link.href}
+                  key={index}
                   to={link.href}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary ${
                     activeLink === link.href ? 'bg-muted' : ''

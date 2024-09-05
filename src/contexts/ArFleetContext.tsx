@@ -27,9 +27,9 @@ import { downloadUint8ArrayAsFile } from '@/helpers/extra';
 import { Arp, ArpReader } from '@/helpers/arp';
 import { Promise as BluebirdPromise } from 'bluebird';
 import { CallbackQueue } from '@/helpers/callbackQueue';
+import useLocalStorageState from 'use-local-storage-state';
 
 const CHUNK_SIZE = 8192;
-const PROVIDERS = ['http://localhost:8330', 'http://localhost:8331', 'http://localhost:8332'];
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
 
@@ -197,6 +197,10 @@ export class StorageAssignment {
   }
 }
 
+const DEFAULT_SETTINGS = {
+  providers: ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io']
+};
+
 interface ArFleetContextType {
   assignments: StorageAssignment[];
   selectedAssignmentId: string | null;
@@ -213,6 +217,9 @@ interface ArFleetContextType {
   resetAODB: () => Promise<void>;
   fetchAndProcessManifest: (assignment: StorageAssignment, masterKey: Uint8Array | null) => Promise<void>;
   masterKey: Uint8Array | null;
+  provisionedProviders: string[];
+  settings: typeof DEFAULT_SETTINGS;
+  updateSettings: (newSettings: Partial<typeof DEFAULT_SETTINGS>) => void;
 }
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
@@ -324,10 +331,29 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [pubKeyB64, setPubKeyB64] = useState<string | null>(null);
   const [pubKey, setPubKey] = useState<ArrayBuffer | null>(null);
   const [masterKey, setMasterKey] = useState<Uint8Array | null>(null);
+  const [provisionedProviders, setProvisionedProviders] = useState<string[]>([]);
 
   const [aodb, setAodb] = useState<AODB | null>(null);
 
   const [devMode] = useState<boolean>(true); // or false, depending on your preference
+
+  const [settings, setSettings] = useLocalStorageState('arFleetSettings', {
+    defaultValue: DEFAULT_SETTINGS
+  });
+
+  const updateSettings = (newSettings: Partial<typeof DEFAULT_SETTINGS>) => {
+    setSettings(prevSettings => ({ ...prevSettings, ...newSettings }));
+  };
+
+  useEffect(() => {
+    const provisionedProviders = ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io'];
+    if (devMode) {
+      provisionedProviders.push('http://localhost:8330');
+      provisionedProviders.push('http://localhost:8331');
+      provisionedProviders.push('http://localhost:8332');
+    }
+    setProvisionedProviders(provisionedProviders);
+  }, [devMode]);
 
   const resetAODB = useCallback(async () => {
     if (aodb) {
@@ -896,7 +922,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const tmpId: string = (new Date()).getTime().toString();
     const assignmentHash = await sha256hex(new TextEncoder().encode(tmpId));
-    const placements = await Promise.all(PROVIDERS.map(async provider => {
+    const placements = await Promise.all(settings.providers.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
 
       const rsaContainer = new RSAContainer(rsaKeyPair, folder);
@@ -1112,8 +1138,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     connectWallet,
     fetchFromArweave,
     devMode,
+    provisionedProviders,
     resetAODB,
     fetchAndProcessManifest,
+    settings,
+    updateSettings,
   };
 
   return <ArFleetContext.Provider value={value}>{children}</ArFleetContext.Provider>;
