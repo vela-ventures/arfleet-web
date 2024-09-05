@@ -28,7 +28,8 @@ import { Arp, ArpReader } from '@/helpers/arp';
 import { Promise as BluebirdPromise } from 'bluebird';
 import { CallbackQueue } from '@/helpers/callbackQueue';
 import useLocalStorageState from 'use-local-storage-state';
-
+import { checkPasses, hasPass } from '../arfleet/passes';
+import { getAoInstance } from '../arfleet/ao';
 const CHUNK_SIZE = 8192;
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
@@ -136,6 +137,35 @@ export class Placement {
 
     return chunk;
   }
+
+  async cmd(cmd: string, data: any, expectJson: boolean = true) {
+    const address = this.assignment!.walletAddress;
+
+    const response = await fetch(`${this.provider}/cmd/${cmd}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'arfleet-address': address,
+        'arfleet-signature': 'signature', // todo: P4?
+      },
+      body: JSON.stringify(data)
+    });
+
+    console.log("cmd", cmd, data, response);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    let result;
+    if (expectJson) {
+      result = await response.json();
+    } else {
+      result = await response.text();
+    }
+
+    return result;
+  }
 }
 
 export class StorageAssignment {
@@ -150,6 +180,7 @@ export class StorageAssignment {
   encryptedManifestArp: string | null;
   walletSigner: WalletSigner | null;
   processQueue: CallbackQueue;
+  walletAddress: string | null;
 
   constructor(data: Partial<StorageAssignment>) {
     // initial values
@@ -163,6 +194,7 @@ export class StorageAssignment {
     this.folder = null;
     this.encryptedManifestArp = data.encryptedManifestArp || null;
     this.walletSigner = null;
+    this.walletAddress = null;
     this.processQueue = new CallbackQueue();
 
     Object.assign(this, data);
@@ -197,9 +229,10 @@ export class StorageAssignment {
   }
 }
 
+// Move DEFAULT_SETTINGS outside of the component
 const DEFAULT_SETTINGS = {
-  providers: ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io']
-};
+  providers: ['http://localhost:8890', 'http://localhost:8330']
+}
 
 interface ArFleetContextType {
   assignments: StorageAssignment[];
@@ -220,6 +253,9 @@ interface ArFleetContextType {
   provisionedProviders: string[];
   settings: typeof DEFAULT_SETTINGS;
   updateSettings: (newSettings: Partial<typeof DEFAULT_SETTINGS>) => void;
+  resetSettingsToDefault: () => void;
+  passStatus: 'started' | 'checking' | 'ok' | 'notfound' | 'error';
+  ao: any | null;
 }
 
 const ArFleetContext = createContext<ArFleetContextType | undefined>(undefined);
@@ -334,6 +370,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [provisionedProviders, setProvisionedProviders] = useState<string[]>([]);
 
   const [aodb, setAodb] = useState<AODB | null>(null);
+  const [passStatus, setPassStatus] = useState<'started' | 'checking' | 'ok' | 'notfound' | 'error'>('started');
+  const [ao, setAo] = useState<any | null>(null);
 
   const [devMode] = useState<boolean>(true); // or false, depending on your preference
 
@@ -345,12 +383,25 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setSettings(prevSettings => ({ ...prevSettings, ...newSettings }));
   };
 
+  const resetSettingsToDefault = () => {
+    setSettings(DEFAULT_SETTINGS);
+  };
+
   useEffect(() => {
-    const provisionedProviders = ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io'];
+    if (wallet && !ao) {
+      const ao = getAoInstance(wallet);
+      setAo(ao);
+    }
+  }, [wallet, ao]);
+
+  useEffect(() => {
+    // const provisionedProviders = ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io'];
+    const provisionedProviders = [];
     if (devMode) {
+      provisionedProviders.push('http://localhost:8890');
       provisionedProviders.push('http://localhost:8330');
       provisionedProviders.push('http://localhost:8331');
-      provisionedProviders.push('http://localhost:8332');
+      // provisionedProviders.push('http://localhost:8332');
     }
     setProvisionedProviders(provisionedProviders);
   }, [devMode]);
@@ -362,6 +413,28 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.log('AODB reset successfully');
     }
   }, [aodb]);
+
+  useEffect(() => {
+    if (arConnected && ao) {
+      if (passStatus === 'started') {
+        setPassStatus('checking');
+        (async () => {
+          try {
+            await checkPasses(false);
+            const res = await hasPass(address);
+            if (res) {
+              setPassStatus('ok');
+            } else {
+              setPassStatus('notfound');
+            }
+          } catch(e) {
+            console.error("Error checking passes:", e);
+            setPassStatus('error');
+          }
+        })();
+      }
+    }
+  }, [arConnected, ao, address, passStatus])
 
   useEffect(() => {
     const initAODB = async () => {
@@ -620,21 +693,51 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   checkProviderReadyRef.current = async (placement: Placement) => {
     console.log(`Checking if provider is ready for placement ${placement.id}`);
     try {
-      const response = await fetch(`${placement.provider}/ready`, {
-        method: 'POST',
+      const result = await placement.cmd('ping', { placementId: placement.id }, false);
+
+      if (result !== 'pong') {
+        throw new Error('Provider not ready');
+      }
+
+      // announcement
+
+      const result_ann = await fetch(`${placement.provider}/announcement`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ placementId: placement.id })
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!result_ann.ok) {
+        throw new Error(`HTTP error! status: ${result_ann.status}`);
+      }
+
+      const announcement = await result_ann.json();
+      console.log('announcement', announcement);
+      const providerId = announcement.announcement.ProviderId;
+
+      if (!providerId) {
+        throw new Error(`Provider not sent announcement: ${announcement}`);
+      }
+
+      console.log('providerId', providerId);
+
+      // placement
+      // placement
+
+      const placementBlob = placement.placementBlob;
+      const placementBlobLength = await placementBlob!.getByteLength();
+      const chunkCount = await placementBlob!.getChunkCount();
+  
+      const result_p = await placement.cmd('placement', { placement_id: placement.id, size: placementBlobLength, chunks: chunkCount, provider_id: providerId }, false);
+
+      if (result_p !== 'OK') {
+        throw new Error(`Provider not ready: on cmd/placement responded with ${result_p}`);
       }
 
       console.log(`Provider ready for placement ${placement.id}`);
       updatePlacementStatus(placement.id, 'transferring');
-      return 'transferring';
+      return 'transferring';  
     } catch (error) {
       console.error(`Error checking provider ready for placement ${placement.id}:`, error);
       throw error;
@@ -727,10 +830,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       'X-Placement-Id': placement.id,
       'X-Chunk-Index': chunkIndex.toString(),
       'X-Chunk-Hash': chunkHashHex,
-      'X-RSA-Public-Key': stringToB64Url(publicKeyPemString)
+      'X-RSA-Public-Key': stringToB64Url(publicKeyPemString),
+
+      'Arfleet-Address': address,
+      'Arfleet-Signature': 'signature' // todo: p4
     });
 
-    const response = await fetch(`${placement.provider}/upload`, {
+    const response = await fetch(`${placement.provider}/cmd/upload`, {
       method: 'POST',
       headers: headers,
       body: chunk,
@@ -822,6 +928,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       headers: {
         'Content-Type': 'application/json',
         'X-Placement-Id': placement.id,
+
+        'Arfleet-Address': address,
+        'Arfleet-Signature': 'signature' // todo: p4
       },
       body: JSON.stringify(metadata),
     });
@@ -998,6 +1107,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placements: [],
       progress: 0,
       walletSigner: walletSigner,
+      walletAddress: address,
       dataItemFactory: new DataItemFactory(
         /* owner */pubKeyB64!,
         /* target */bufferTob64Url(await sha256(stringToBuffer("empty-target"))), 
@@ -1143,6 +1253,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     fetchAndProcessManifest,
     settings,
     updateSettings,
+    resetSettingsToDefault,
+    ao,
+    passStatus,
   };
 
   return <ArFleetContext.Provider value={value}>{children}</ArFleetContext.Provider>;

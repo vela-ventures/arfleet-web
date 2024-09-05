@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { CloudUpload, FolderUp, Globe, HardDrive, RefreshCw, Loader2 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { useArFleet } from '../contexts/ArFleetContext';
@@ -15,10 +15,10 @@ interface Announcement {
 }
 
 export default function Providers({  }: any) {
-  const { wallet, devMode, provisionedProviders } = useArFleet();
-  const [ao, setAo] = useState(null);
+  const { wallet, devMode, provisionedProviders, ao } = useArFleet();
   const [announcements, setAnnouncements] = useState<Record<string, Announcement>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchAnnouncements = async () => {
     try {
@@ -34,14 +34,15 @@ export default function Providers({  }: any) {
   }
 
   useEffect(() => {
-    if (wallet && !ao) {
-      console.log('Wallet connected', wallet);
-      const ao = getAoInstance(wallet);
-      setAo(ao);
-
+    if (wallet && ao) {
       fetchAnnouncements();
-      const interval = setInterval(fetchAnnouncements, 20000);
-      return () => clearInterval(interval);
+      intervalRef.current = setInterval(fetchAnnouncements, 20000);
+      
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+      };
     }
   }, [wallet, ao]);
 

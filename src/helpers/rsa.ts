@@ -80,7 +80,7 @@ export class RSAContainer extends EncryptedContainer {
 
       let xoredChunk = fullyPaddedChunk;
       // Note: starting with 1! we don't touch the first 0x00 byte
-      for(let j = 1; j < RSA_ENCRYPTED_CHUNK_SIZE; j++) {
+      for(let j = 1; j < RSA_UNDERLYING_CHUNK_SIZE; j++) {
         xoredChunk[j] = fullyPaddedChunk[j] ^ previousEncryptedChunk[j];
       }
 

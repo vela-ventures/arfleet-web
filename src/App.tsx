@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom'
-import { Bell, CloudUpload, Home, Package, ShoppingCart, Users, Server, CogIcon, Globe, FileText, Folder, FolderArchive } from "lucide-react"
+import { Bell, CloudUpload, Home, Package, ShoppingCart, Users, Server, CogIcon, Globe, FileText, Folder, FolderArchive, Wallet } from "lucide-react"
 import { Link as RouterLink } from 'react-router-dom'
 import { ConnectButton } from "arweave-wallet-kit"
 import WalletWrapper from './components/WalletWrapper'
@@ -28,6 +28,9 @@ import WallOfLines from './components/WallOfLines'
 import React from 'react';
 import FileDownload from './components/FileDownload';
 import { Toaster } from "@/components/ui/toaster"
+import { Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { AlertCircle } from "lucide-react"
 
 // Components for other routes (placeholder)
 
@@ -161,7 +164,7 @@ function Header({ theme }) {
         </SheetContent>
       </Sheet>
       <div className="w-full flex-1">
-        <form>
+        {/* <form>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -170,7 +173,7 @@ function Header({ theme }) {
               className="w-full appearance-none bg-background pl-8 shadow-none md:w-2/3 lg:w-1/3"
             />
           </div>
-        </form>
+        </form> */}
       </div>
 
       <ConnectButton
@@ -211,13 +214,12 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   activeLink: string;
   theme: string;
   isGlobalDragActive: boolean;
-  masterKey: Uint8Array | null;
 }) {
   const location = useLocation()
-  const { arConnected, masterKey } = useArFleet();
+  const { arConnected, passStatus, wallet, address, masterKey } = useArFleet();
 
   const links = [
-    { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet isGlobalDragActive={isGlobalDragActive} masterKey={masterKey} /> },
+    { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet masterKey={masterKey} isGlobalDragActive={isGlobalDragActive} /> },
     { name: "Providers", href: "/providers", icon: <Server className="h-4 w-4" />, component: <Providers /> },
     // { name: "Files", href: "/files", icon: <FolderArchive className="h-4 w-4" />, component: <Dashboard /> },
     // { name: "Products", href: "/products", icon: <Package className="h-4 w-4" />, component: <Products /> },
@@ -239,16 +241,89 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
 
         <div className="flex-1 overflow-auto">
           {arConnected ? (
-            <Routes>
-              {links.map((link, index) => (
-                <Route key={index} path={link.href} element={link.component} />
-              ))}
-              <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
-            </Routes>
+            passStatus === 'checking' ? (
+              <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800">
+                <Card className="w-[400px] shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-2xl font-bold text-center">Checking ArFleet:Genesis Pass</CardTitle>
+                    <CardDescription className="text-center">Please wait while we verify your access</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col items-center">
+                    <Loader2 className="h-8 w-8 animate-spin mb-4" />
+                    <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
+                      This may take a few moments...
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : passStatus === 'notfound' ? (
+              <Dialog open={true}>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5 text-yellow-500" />
+                      Pass Not Found
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="py-4">
+                    <p className="mb-4">
+                      You don't have an ArFleet:Genesis pass to connect to providers on the ArFleet testnet.
+                    </p>
+                    <p className="mb-4">
+                      ArFleet:Genesis passes are this asset on Bazar:
+                    </p>
+                    <a 
+                      href="https://bazar.arweave.dev/#/asset/kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline break-all"
+                    >
+                      https://bazar.arweave.dev/#/asset/kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw
+                    </a>
+                  </div>
+                  <div className="mt-4">
+                    After you have the pass on your wallet, click the button below to reload the page:
+                  </div>
+                  <div className="mt-4">
+                    <Button 
+                      onClick={() => window.location.reload()} 
+                      className="w-full"
+                    >
+                      Reload
+                    </Button>
+                  </div>
+                  <DialogFooter>
+                    <p className="text-sm text-gray-500">
+                      Connected wallet: {address.slice(0, 6)}...{address.slice(-4)}
+                    </p>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : passStatus === 'error' ? (
+              <div className="flex flex-col items-center justify-center p-6 bg-red-50 dark:bg-red-900 rounded-lg shadow-md">
+                <AlertCircle className="h-12 w-12 text-red-500 dark:text-red-400 mb-4" />
+                <p className="text-lg text-red-700 dark:text-red-300 mb-4 text-center">
+                  An error occurred while checking your pass status.
+                </p>
+                <Button 
+                  onClick={() => window.location.reload()}
+                  className="bg-red-500 hover:bg-red-600 text-white"
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <Routes>
+                {links.map((link, index) => (
+                  <Route key={index} path={link.href} element={link.component} />
+                ))}
+                <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
+              </Routes>
+            )
           ) : (
             <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800 font-RobotoMono relative">
 
-              <Card className="w-[350px] shadow-lg shadow-gray-400 dark:shadow-gray-500 dark:shadow-sm z-10">
+              <Card className="w-[400px] shadow-lg shadow-gray-400 dark:shadow-gray-500 dark:shadow-sm z-10">
                 <CardHeader>
                   <div className="flex justify-center mb-4">
                     <img 
@@ -259,7 +334,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
                     />
                   </div>
                   <CardTitle className="text-2xl font-bold text-center">Welcome to ArFleet</CardTitle>
-                  <CardDescription className="text-center">Connect your ArWeave wallet to get started</CardDescription>
+                  <CardDescription className="text-center">Connect your ArWeave wallet<br/>to get started</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center">
                   <p className="mb-4 text-sm text-gray-600 dark:text-gray-300 text-center">
