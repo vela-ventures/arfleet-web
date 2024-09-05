@@ -24,6 +24,7 @@ import {useDropzone} from 'react-dropzone';
 import { ArFleetProvider, useArFleet } from './contexts/ArFleetContext';
 import WallOfLines from './components/WallOfLines'
 import React from 'react';
+import FileDownload from './components/FileDownload';
 
 // Components for other routes (placeholder)
 const Dashboard = () => <div>Dashboard</div>
@@ -267,6 +268,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
                   element={link.component}
                 />
               ))}
+              <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
             </Routes>
           ) : (
             <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800 font-RobotoMono relative">

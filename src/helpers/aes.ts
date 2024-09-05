@@ -184,18 +184,18 @@ export class AESContainerReader extends SliceableReader {
     initialized: boolean;
     salt: Uint8Array;
     iv: Uint8Array;
-    key: Uint8Array;
-    masterKey: Uint8Array;
+    key: Uint8Array | null;
+    masterKey: Uint8Array | null;
     dataStartPos: number;
-    constructor(ciphertext: SliceableReader, masterKey: Uint8Array) {
+    constructor(ciphertext: SliceableReader, masterKey: Uint8Array, keyType: 'master' | 'item' = 'master') {
         super();
         this.ciphertext = ciphertext;
         this.dataLength = 0;
         this.initialized = false;
         this.salt = new Uint8Array();
         this.iv = new Uint8Array();
-        this.key = new Uint8Array();
-        this.masterKey = masterKey;
+        this.masterKey = (keyType === 'master') ? masterKey : null;
+        this.key = (keyType === 'item') ? masterKey : null;
         this.dataStartPos = 0;
     }
 
@@ -217,7 +217,14 @@ export class AESContainerReader extends SliceableReader {
         this.salt = header.slice(16, 16 + AES_SALT_BYTE_LENGTH);
         this.iv = header.slice(16 + AES_SALT_BYTE_LENGTH, 16 + AES_SALT_BYTE_LENGTH + AES_IV_BYTE_LENGTH);
         
-        this.key = await encKeyFromMasterKeyAndSalt(this.masterKey, this.salt);
+        // this.key = (this.masterKey) ? await encKeyFromMasterKeyAndSalt(this.masterKey, this.salt) : this.key;
+        if (this.masterKey) {
+            this.key = await encKeyFromMasterKeyAndSalt(this.masterKey, this.salt);
+        } else {
+            if (!this.key) {
+                throw new Error('AESContainerReader: no key provided');
+            }
+        }
 
         this.dataStartPos = 8 + 8 + AES_SALT_BYTE_LENGTH + AES_IV_BYTE_LENGTH;
     }
@@ -260,7 +267,7 @@ export class AESContainerReader extends SliceableReader {
 
             const iv = (chunkIdx === 0) ? this.iv : prevCiphertext.slice(-AES_IV_BYTE_LENGTH);
 
-            const plaintextChunk = await decryptAes(thisCiphertext, this.key, iv);
+            const plaintextChunk = await decryptAes(thisCiphertext, this.key!, iv);
             // console.log("plaintextChunk", bufferToAscii(plaintextChunk), plaintextChunk.length, chunkIdx);
 
             // make sure it's correct size
