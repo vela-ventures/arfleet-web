@@ -366,7 +366,7 @@ export default function FileContentViewer() {
               {item.name}
             </span>
           </div>
-          {item.type === 'file' && (
+          {item.type === 'file' && item.file?.arpId && (
             <div className="flex flex-wrap gap-2 items-center justify-end">
               <Button
                 size="sm"
@@ -474,6 +474,14 @@ export default function FileContentViewer() {
       setIsDownloading(false);
     }
   };
+
+  for (const file of assignment.files) {
+    if (!file.arpId) {
+      if (file.arp?.chunkHashes && Object.keys(file.arp.chunkHashes).length > 0) {
+        file.arpId = file.arp.chunkHashes[0];
+      }
+    }
+  }
 
   return (
     <div className="p-2 border-t">
