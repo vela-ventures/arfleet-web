@@ -21,7 +21,7 @@ export default function StorageAssignmentList({
   // console.log('StorageAssignmentList rendering', assignments.length);
   // console.log("Assignments in StorageAssignmentList:", assignments);
   return (
-    <div className="w-64 border-r overflow-y-auto">
+    <div className="h-full overflow-y-auto overflow-x-hidden">
       <h2 className="text-lg font-semibold p-4">Assignments</h2>
       <ul>
         {assignments.map((assignment) => (
@@ -36,8 +36,12 @@ export default function StorageAssignmentList({
               fetchAndProcessManifest(assignment, masterKey);
             }}
           >
-            <p>Assignment {assignment.id.slice(0, 8)}...</p>
-            <p className="text-sm text-muted-foreground mb-2">{assignment.status}</p>
+            <p className="truncate" title={`Assignment ${assignment.id}`}>
+              Assignment {assignment.id.slice(0, 8)}...
+            </p>
+            <p className="text-sm text-muted-foreground mb-2 truncate" title={assignment.status}>
+              {assignment.status}
+            </p>
             <div className="space-y-0.5">
               {assignment.placements.slice(0, 3).map((placement) => (
                 <Progress 

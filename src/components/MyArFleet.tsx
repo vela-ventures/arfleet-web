@@ -111,29 +111,34 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
   }, [assignments]);
 
   return (
-    <div {...getRootProps()} className="flex flex-col relative">
-      <input {...getInputProps()} />
-      
+    <div className="flex flex-col h-full">
       <h1 className="text-2xl font-bold p-4">My ArFleet</h1>
-
-      {assignments.length === 0 ? (
-        dragAndDropOverlay(false)
-      ) : (
-        <div className="flex-1 flex">
-          <StorageAssignmentList
-            assignments={assignments}
-            selectedAssignmentId={selectedAssignmentId}
-            onSelectAssignment={setSelectedAssignmentId}
-            fetchAndProcessManifest={fetchAndProcessManifest}
-            masterKey={masterKey}
-          />
-          <div className="flex-1 flex flex-col">
-            <AssignmentDetails />
-            <FileContentViewer />
-          </div>
+      <div className="flex-1 flex overflow-hidden">
+        <div {...getRootProps()} className="flex-1 flex relative">
+          <input {...getInputProps()} />
+          
+          {assignments.length === 0 ? (
+            dragAndDropOverlay(false)
+          ) : (
+            <>
+              <div className="w-64 border-r overflow-y-auto">
+                <StorageAssignmentList
+                  assignments={assignments}
+                  selectedAssignmentId={selectedAssignmentId}
+                  onSelectAssignment={setSelectedAssignmentId}
+                  fetchAndProcessManifest={fetchAndProcessManifest}
+                  masterKey={masterKey}
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <AssignmentDetails />
+                <FileContentViewer />
+              </div>
+            </>
+          )}
+          {isDragActive && dragAndDropOverlay(true)}
         </div>
-      )}
-      {isDragActive && dragAndDropOverlay(true)}
+      </div>
     </div>
   );
 }

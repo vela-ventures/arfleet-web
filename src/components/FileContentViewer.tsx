@@ -180,7 +180,7 @@ export default function FileContentViewer() {
           ${item.type === 'file' ? 'hover:bg-gray-100 dark:hover:bg-gray-800' : ''}`}
         >
           <Checkbox
-            className="opacity-0 group-hover:opacity-100 mr-2 h-4 w-4"
+            className="opacity-0 group-hover:opacity-100 mr-2 h-4 w-4 flex-shrink-0"
             checked={selectedItems.has(item.path)}
             onCheckedChange={(checked) => {
               const newSelected = new Set(selectedItems);
@@ -193,46 +193,46 @@ export default function FileContentViewer() {
             }}
           />
           {item.type === 'folder' ? (
-            <FolderIcon className="w-5 h-5 mr-2 text-yellow-500" />
+            <FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-500" />
           ) : (
             getFileIcon(item.name)
           )}
-          <span className={`flex-grow truncate ${item.type === 'folder' ? 'font-semibold' : ''}`}>
+          <span className={`flex-grow truncate ${item.type === 'folder' ? 'font-semibold' : ''}`} title={item.name}>
             {item.name}
           </span>
           {item.type === 'file' && (
-            <>
+            <div className="flex-shrink-0 flex space-x-1">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => item.file && downloadFile(item.file)}
                 disabled={downloadingFilePath === item.path}
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 mr-2 text-black dark:text-white border-gray-300 dark:border-gray-600"
+                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
+                title="Download"
               >
-                <DownloadIcon className="w-4 h-4 mr-1" />
-                {downloadingFilePath === item.path ? 'Downloading...' : 'Download'}
+                <DownloadIcon className="w-4 h-4" />
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => openShareDialog(item)}
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 mr-2 text-black dark:text-white border-gray-300 dark:border-gray-600"
+                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
+                title="Share"
               >
-                <ShareIcon className="w-4 h-4 mr-1" />
-                Share
+                <ShareIcon className="w-4 h-4" />
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => console.log('Immortalize clicked')} // Add your immortalize logic here
                 className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
+                title="Immortalize"
               >
-                <span className="w-4 h-4 mr-1 inline-flex items-center justify-center border border-current rounded-full text-xs">
+                <span className="w-4 h-4 inline-flex items-center justify-center border border-current rounded-full text-xs">
                   <span className="relative bottom-[1px]">a</span>
                 </span>
-                Immortalize
               </Button>
-            </>
+            </div>
           )}
         </div>
         {item.type === 'folder' && item.children && (
@@ -316,9 +316,11 @@ export default function FileContentViewer() {
           <TabsTrigger value="files">Files</TabsTrigger>
         </TabsList>
         <TabsContent value="files">
-          <ul className="mt-1">
-            {renderFileTree(fileTree)}
-          </ul>
+          <div className="overflow-y-auto">
+            <ul className="mt-1">
+              {renderFileTree(fileTree)}
+            </ul>
+          </div>
         </TabsContent>
       </Tabs>
       <Dialog open={isShareDialogOpen} onOpenChange={closeShareDialog}>

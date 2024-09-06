@@ -259,9 +259,9 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
       <Sidebar activeLink={activeLink} links={links} />
-      <div className="flex flex-col h-screen overflow-hidden">
+      <div className="flex flex-col h-screen">
         <Header theme={theme} />
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-hidden">
           <Routes>
             <Route path="/download/:arpId/:key/:name/:provider" element={<FileDownload />} />
             <Route path="*" element={renderContent()} />
