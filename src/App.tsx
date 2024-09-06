@@ -178,7 +178,7 @@ function Header({ theme }) {
 
       <ConnectButton
         accent={buttonStyle.accent}
-        className={`${buttonStyle.className} h-9`}
+        className={`${buttonStyle.className} h-9 connect-button`}
       />
 
       <ThemeToggle />

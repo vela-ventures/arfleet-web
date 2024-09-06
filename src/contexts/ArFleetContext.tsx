@@ -28,8 +28,10 @@ import { Arp, ArpReader } from '@/helpers/arp';
 import { Promise as BluebirdPromise } from 'bluebird';
 import { CallbackQueue } from '@/helpers/callbackQueue';
 import useLocalStorageState from 'use-local-storage-state';
-import { checkPasses, hasPass } from '../arfleet/passes';
+import { checkPasses, hasPass, hasPassLive } from '../arfleet/passes';
 import { getAoInstance } from '../arfleet/ao';
+import { createAndSpawnDeal, fundDeal } from '../arfleet/deal';
+import utils from '../arfleet/utils';
 const CHUNK_SIZE = 8192;
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
@@ -85,13 +87,19 @@ export class Placement {
   id: string;
   assignmentId: string;
   provider: string;
-  status: 'created' | 'transferring' | 'verifying' | 'completed' | 'error';
+  status: 'created' | 'transferring' | 'spawningDeal' | 'fundingDeal' | 'verifying' | 'accepting' | 'completed' | 'error';
   progress: number;
   rsaKeyPair: CryptoKeyPair | null;
   placementBlob: PlacementBlob | null;
   chunks?: { [chunkIndex: number]: string };
   assignment: StorageAssignment | null;
   rsaContainer: RSAContainer | null;
+  createdAt: number;
+  requiredReward: number;
+  requiredCollateral: number;
+  processId: string | null;
+  merkleTree: string[];
+  merkleRoot: string;
 
   constructor(data: Partial<Placement>) {
     // initial values
@@ -104,7 +112,12 @@ export class Placement {
     this.placementBlob = null;
     this.assignment = null;
     this.rsaContainer = null;
-
+    this.createdAt = 0;
+    this.requiredReward = 0;
+    this.requiredCollateral = 0;
+    this.processId = null;
+    this.merkleTree = [];
+    this.merkleRoot = '';
     Object.assign(this, data);
   }
 
@@ -116,6 +129,12 @@ export class Placement {
       status: this.status,
       progress: this.progress,
       // chunks: this.chunks,
+      createdAt: this.createdAt,
+      requiredReward: this.requiredReward,
+      requiredCollateral: this.requiredCollateral,
+      processId: this.processId,
+      // merkleTree: this.merkleTree,
+      merkleRoot: this.merkleRoot,
     };
   }
 
@@ -358,6 +377,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const checkProviderReadyRef = useRef<(placement: Placement) => Promise<string>>();
   const transferChunksRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
   const verifyStorageRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<void>>();
+  const spawnDealRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
+  const fundDealRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
+  const acceptDealRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
 
   const [arConnected, setArConnected] = useState(false);
   const [wallet, setWallet] = useState<any | null>(null);
@@ -372,6 +394,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [aodb, setAodb] = useState<AODB | null>(null);
   const [passStatus, setPassStatus] = useState<'started' | 'checking' | 'ok' | 'notfound' | 'error'>('started');
   const [ao, setAo] = useState<any | null>(null);
+  const aoRef = useRef<any | null>(null);
 
   const [devMode] = useState<boolean>(true); // or false, depending on your preference
 
@@ -389,8 +412,10 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     if (wallet && !ao) {
-      const ao = getAoInstance(wallet);
+      const ao = getAoInstance.bind(null, wallet);
       setAo(ao);
+      console.log({ao});
+      aoRef.current = ao;
     }
   }, [wallet, ao]);
 
@@ -420,8 +445,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setPassStatus('checking');
         (async () => {
           try {
-            await checkPasses(false);
-            const res = await hasPass(address);
+            // await checkPasses(false);
+            const res = await hasPassLive(address);
+
+            // await ao.spawnAODB();
+
             if (res) {
               setPassStatus('ok');
             } else {
@@ -435,6 +463,25 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
   }, [arConnected, ao, address, passStatus])
+
+  useEffect(() => {
+    (async () => {
+      if (arConnected && ao && address) {
+        // get wAR balance
+        const wARBalance = await ao.getDefaultTokenBalance(address);
+        console.log({wARBalance});
+
+        // Monkey patch the connect button to display wAR balance
+        const connectButton = document.querySelector('.connect-button');
+        if (connectButton) {
+          const balanceElement = connectButton.querySelector('.mocked-styled-4');
+          if (balanceElement) {
+            balanceElement.textContent = `${wARBalance.toFixed(4)} wAR`;
+          }
+        }
+        }
+    })();
+  }, [arConnected, ao, address]);
 
   useEffect(() => {
     const initAODB = async () => {
@@ -674,6 +721,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         case 'transferring':
           newStatus = await transferChunksRef.current?.(placement, assignment) || placement.status;
           break;
+        case 'spawningDeal':
+          newStatus = await spawnDealRef.current?.(placement, assignment) || placement.status;
+          break;
+        case 'fundingDeal':
+          newStatus = await fundDealRef.current?.(placement, assignment) || placement.status;
+          break;
+        case 'accepting':
+          newStatus = await acceptDealRef.current?.(placement, assignment) || placement.status;
+          break;
         case 'verifying':
           newStatus = await verifyStorageRef.current?.(placement, assignment) || placement.status;
           break;
@@ -809,7 +865,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     ));
 
     console.log(`All chunks uploaded for placement ${placement.id}`);
-    return 'verifying';
+    return 'spawningDeal';
   };
 
   const uploadChunk = async (placement: Placement, chunk: Uint8Array, chunkIndex: number) => {
@@ -846,6 +902,58 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     return chunkHashHex;
+  };
+
+  spawnDealRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
+    try {
+      console.log(`Spawning deal for placement ${placement.id}`);
+
+      // create merkle tree
+      const chunkHashesHex = Object.values(placement.chunks || {});
+      if (chunkHashesHex.length === 0) {
+        throw new Error('No chunks found');
+      }
+
+      const chunkHashesBin = chunkHashesHex.map(h => hexToBuffer(h));
+      const merkleTree = await utils.merkle(chunkHashesBin, utils.hashFn);
+      const merkleTreeHex = merkleTree.map((h: Uint8Array) => bufferToHex(h));
+      const merkleRootHex = merkleTreeHex[merkleTreeHex.length - 1];
+      console.log({merkleTree, merkleTreeHex, merkleRootHex, chunkHashesHex, chunkHashesBin});
+      placement.merkleRoot = merkleRootHex;
+      placement.merkleTree = merkleTreeHex;
+
+      const processId = await createAndSpawnDeal(aoRef.current, placement, merkleRootHex, assignment);
+      placement.processId = processId;
+      console.log(`Deal spawned for placement ${placement.id}: ${processId}`);
+      return 'fundingDeal';
+    } catch (error) {
+      console.error(`Error spawning deal for placement ${placement.id}:`, error);
+      return 'error';
+    }
+  };
+
+  fundDealRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
+    try {
+      console.log(`Funding deal for placement ${placement.id}`);
+      await fundDeal(aoRef.current, placement);
+      console.log(`Deal funded for placement ${placement.id}`);
+      return 'accepting';
+    } catch (error) {
+      console.error(`Error funding deal for placement ${placement.id}:`, error);
+      return 'error';
+    }
+  };
+
+  acceptDealRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
+    try {
+      console.log(`Accepting deal for placement ${placement.id}`);
+      // await acceptDeal(aoRef.current, placement);
+      console.log(`Deal funded for placement ${placement.id}`);
+      return 'verifying';
+    } catch (error) {
+      console.error(`Error funding deal for placement ${placement.id}:`, error);
+      return 'error';
+    }
   };
 
   verifyStorageRef.current = async (placement: Placement, assignment: StorageAssignment) => {
@@ -1050,6 +1158,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         rsaKeyPair,
         rsaContainer,
         placementBlob,
+        createdAt: Date.now(),
+        requiredReward: 500, // todo: calculate
+        requiredCollateral: 1000, // todo: calculate
       });
     }));
 

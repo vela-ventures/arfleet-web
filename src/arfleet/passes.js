@@ -58,7 +58,24 @@ const checkPasses = async(firstTime = false, ourAddress = null) => {
 }
 
 const hasPass = (address) => {
+    hasPassLive(address);
     return passes && passes[address] && passes[address] > 0;
+}
+
+const hasPassLive = async (address) => {
+    console.log("Checking passes live...");
+    const passAddress = config.passes.address;
+    
+    const ao = getAoInstance();
+    const balance = await ao.dryRun(passAddress, "Balance", JSON.stringify({
+        "Target": address,
+    }));
+
+    if (typeof balance === 'number' && balance > 0) {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 const startChecking = async(ourAddress = null) => {
@@ -76,5 +93,6 @@ export {
     checkPasses,
     startChecking,
     getPasses,
-    hasPass
+    hasPass,
+    hasPassLive
 }

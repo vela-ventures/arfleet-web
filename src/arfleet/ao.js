@@ -196,6 +196,19 @@ class AOClient {
         });
         return res;
     }
+
+    async getDefaultTokenBalance(address) {
+        return await this.getTokenBalance(config.defaultToken, config.defaultTokenDecimals, address);
+    }
+
+    async spawnAODB() {
+        // public/lua/ArFleetAODB.lua
+        const source = await fetch('/lua/ArFleetAODB.lua').then(r => r.text());
+
+        const res = await this.spawn(source);
+        console.log('spawned AODB', { res });
+        return res;
+    }
 }
 
 let aoInstance;

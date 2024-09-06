@@ -8,15 +8,17 @@ const defaultConfig = {
     defaultTokenDecimals: 12,
     defaultTokenSymbol: 'wAR',
 
+    aodbProcessId: 'fydB4BNJgmKkKmC00hjw8uyVTZChPJNRhpPzbz2mb0g',
+
     passes: {
         address: 'kBQOWxXVSj21ZhLqMTFEIJllEal1z_l8YgRRdxIm7pw',
         fetchPassesInterval: 5 * MINUTE,
     },
 
     aoConfig: {
-        MU_URL: "https://mu.ao-testnet.xyz",
+        MU_URL: "https://mu21.ao-testnet.xyz",
         // CU_URL: "https://cu.ao-testnet.xyz",
-        CU_URL: "https://cu24.ao-testnet.xyz",
+        CU_URL: "https://cu21.ao-testnet.xyz",
         // GATEWAY_URL: "https://arweave.net",
         GATEWAY_URL: "https://arweave-search.goldsky.com",
     },
