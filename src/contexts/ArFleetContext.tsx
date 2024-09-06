@@ -201,7 +201,7 @@ export class StorageAssignment {
   walletSigner: WalletSigner | null;
   processQueue: CallbackQueue;
   walletAddress: string | null;
-
+  createdAt: number;
   constructor(data: Partial<StorageAssignment>) {
     // initial values
     this.id = '';
@@ -216,6 +216,7 @@ export class StorageAssignment {
     this.walletSigner = null;
     this.walletAddress = null;
     this.processQueue = new CallbackQueue();
+    this.createdAt = Date.now();
 
     Object.assign(this, data);
     this.files = (this.files || []).map(f => f instanceof FileMetadata ? f : new FileMetadata(f));
@@ -1225,12 +1226,10 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }; // end processAssignment
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    /// WARNING: This is a callback, it captures the state at the beginning.
-    // If you need to use state, add it to dependencies at the end.
     const assignmentId = bufferTob64Url(await sha256(stringToBuffer(Date.now().toString())));
-
+  
     if (!walletSigner) throw new Error('Wallet signer not found');
-
+  
     // Create new assignment
     const newAssignment = new StorageAssignment({
       id: assignmentId,
@@ -1255,8 +1254,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           {name: "ArFleet-Client", value: "Web"},
           {name: "ArFleet-Version", value: ARFLEET_VERSION},
         ],
-      ),
+      )
     });
+  
     setAssignmentsState(prev => {
       const updatedAssignments = [...prev, newAssignment];
       aodb?.set(`assignment:${newAssignment.id}`, newAssignment.serialize());
@@ -1264,9 +1264,25 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       aodb?.set('allAssignments', allAssignmentIds);
       return updatedAssignments;
     });
+  
     setAssignmentQueue(prev => [...prev, newAssignment.id]);
-  }, [aodb, pubKeyB64, walletSigner]);
-
+    
+    // Immediately select the new assignment
+    setSelectedAssignmentId(newAssignment.id);
+  
+    // Update the selection after a short delay
+    setTimeout(() => {
+      setAssignmentsState(prev => {
+        const updatedAssignment = prev.find(a => a.id === newAssignment.id || a.files.some(f => f.name === newAssignment.files[0].name));
+        if (updatedAssignment) {
+          setSelectedAssignmentId(updatedAssignment.id);
+        }
+        return prev;
+      });
+    }, 500); // Adjust this delay as needed
+  
+  }, [aodb, pubKeyB64, walletSigner, address, setSelectedAssignmentId]);
+  
   useEffect(() => {
     const processNextAssignment = async () => {
       if (assignmentQueue.length === 0) return;

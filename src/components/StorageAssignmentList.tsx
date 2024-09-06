@@ -1,40 +1,39 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
 import { StorageAssignment } from '../types';
+import { useArFleet } from '../contexts/ArFleetContext';
 
-interface StorageAssignmentListProps {
-  assignments: StorageAssignment[];
-  selectedAssignmentId: string | null;
-  onSelectAssignment: (assignmentId: string) => void;
-  fetchAndProcessManifest: (assignment: StorageAssignment, masterKey: Uint8Array | null) => Promise<void>;
-  masterKey: Uint8Array | null;
-}
+export default function StorageAssignmentList() {
+  const { assignments, selectedAssignmentId, setSelectedAssignmentId, fetchAndProcessManifest, masterKey } = useArFleet();
 
-export default function StorageAssignmentList({
-  assignments,
-  selectedAssignmentId,
-  onSelectAssignment,
-  fetchAndProcessManifest,
-  masterKey,
-}: StorageAssignmentListProps) {
-  // console.log('StorageAssignmentList rendering', assignments.length);
-  // console.log("Assignments in StorageAssignmentList:", assignments);
+  useEffect(() => {
+    if (!selectedAssignmentId && assignments.length > 0) {
+      setSelectedAssignmentId(assignments[0].id);
+    }
+  }, [assignments, selectedAssignmentId, setSelectedAssignmentId]);
+
+  const sortedAssignments = [...assignments].sort((a, b) => b.createdAt - a.createdAt);
+
+  const handleSelectAssignment = (assignment: StorageAssignment) => {
+    setSelectedAssignmentId(assignment.id);
+    if (assignment.files.length === 0) {
+      fetchAndProcessManifest(assignment, masterKey);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden">
       <h2 className="text-lg font-semibold p-4">Assignments</h2>
       <ul>
-        {assignments.map((assignment) => (
+        {sortedAssignments.map((assignment) => (
           <li
             key={assignment.id}
             className={cn(
               "p-4 cursor-pointer hover:bg-muted",
               selectedAssignmentId === assignment.id && "bg-muted"
             )}
-            onClick={() => {
-              onSelectAssignment(assignment.id);
-              fetchAndProcessManifest(assignment, masterKey);
-            }}
+            onClick={() => handleSelectAssignment(assignment)}
           >
             <p className="truncate" title={`Assignment ${assignment.id}`}>
               Assignment {assignment.id.slice(0, 8)}...

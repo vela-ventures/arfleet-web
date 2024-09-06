@@ -1,11 +1,25 @@
-import React from 'react';
+import React, { useMemo, useEffect } from 'react';
+import { format } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
 import { useArFleet } from '../contexts/ArFleetContext';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function AssignmentDetails() {
-  const { assignments, selectedAssignmentId } = useArFleet();
-  const assignment = assignments.find(a => a.id === selectedAssignmentId);
+  const { assignments, selectedAssignmentId, fetchAndProcessManifest, masterKey } = useArFleet();
+
+  const sortedAssignments = useMemo(() => {
+    return [...assignments].sort((a, b) => b.createdAt - a.createdAt);
+  }, [assignments]);
+
+  const assignment = useMemo(() => {
+    return sortedAssignments.find(a => a.id === selectedAssignmentId) || sortedAssignments[0];
+  }, [sortedAssignments, selectedAssignmentId]);
+
+  useEffect(() => {
+    if (assignment && assignment.files.length === 0) {
+      fetchAndProcessManifest(assignment, masterKey);
+    }
+  }, [assignment, fetchAndProcessManifest, masterKey]);
 
   if (!assignment) {
     return <div className="p-4 text-center text-gray-500 dark:text-gray-400">Select an assignment to view details</div>;
@@ -35,6 +49,12 @@ export default function AssignmentDetails() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+          </div>
+          <div>
+            <span className="font-medium text-gray-500 dark:text-gray-400">Created:</span>
+            <span className="text-gray-800 dark:text-gray-200 ml-2">
+              {format(new Date(assignment.createdAt), 'PPpp')}
+            </span>
           </div>
           <div>
             <span className="font-medium text-gray-500 dark:text-gray-400">Status:</span>
