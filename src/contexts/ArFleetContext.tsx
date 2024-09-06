@@ -87,6 +87,7 @@ export class Placement {
   id: string;
   assignmentId: string;
   provider: string;
+  providerId: string;
   status: 'created' | 'transferring' | 'spawningDeal' | 'fundingDeal' | 'verifying' | 'accepting' | 'completed' | 'error';
   progress: number;
   rsaKeyPair: CryptoKeyPair | null;
@@ -778,6 +779,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       console.log('providerId', providerId);
 
+      placement.providerId = providerId;
+
       // placement
       // placement
 
@@ -947,11 +950,24 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   acceptDealRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
     try {
       console.log(`Accepting deal for placement ${placement.id}`);
-      // await acceptDeal(aoRef.current, placement);
-      console.log(`Deal funded for placement ${placement.id}`);
+      
+      const chunkHashesHex = Object.values(placement.chunks || {});
+
+      const response = await placement.cmd('accept', {
+        placement_id: placement.id,
+        process_id: placement.processId,
+        merkle_root: placement.merkleRoot,
+        chunks: chunkHashesHex,
+      }, false);
+
+      if (response !== 'OK') {
+        throw new Error(`HTTP error! returned: ${response}`);
+      }
+
+      console.log(`Deal accepted for placement ${placement.id}`);
       return 'verifying';
     } catch (error) {
-      console.error(`Error funding deal for placement ${placement.id}:`, error);
+      console.error(`Error accepting deal for placement ${placement.id}:`, error);
       return 'error';
     }
   };
@@ -1031,28 +1047,40 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     //   return a;
     // }));
 
-    const response = await fetch(`${placement.provider}/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Placement-Id': placement.id,
+    // const response = await fetch(`${placement.provider}/verify`, {
+    //   method: 'POST',
+    //   headers: {
+    //     'Content-Type': 'application/json',
+    //     'X-Placement-Id': placement.id,
 
-        'Arfleet-Address': address,
-        'Arfleet-Signature': 'signature' // todo: p4
-      },
-      body: JSON.stringify(metadata),
-    });
+    //     'Arfleet-Address': address,
+    //     'Arfleet-Signature': 'signature' // todo: p4
+    //   },
+    //   body: JSON.stringify(metadata),
+    // });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    // if (!response.ok) {
+    //   throw new Error(`HTTP error! status: ${response.status}`);
+    // }
 
-    const result = await response.json();
-    if (result.status === 'success') {
+    // const result = await response.json();
+
+    const rsaKP = placement.rsaContainer!.rsaKeyPair;
+    const publicKey = rsaKP.publicKey;
+    const publicKeyPem = await crypto.subtle.exportKey('spki', publicKey);
+    const publicKeyPemBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyPem)));
+    const publicKeyPemString = `-----BEGIN PUBLIC KEY-----\n${publicKeyPemBase64}\n-----END PUBLIC KEY-----`;
+
+    const result = await placement.cmd('complete', {
+      placement_id: placement.id,
+      public_key: publicKeyPemString,
+    }, false);
+
+    if (result === 'OK') {
       updatePlacementStatus(placement.id, 'completed');
     } else {
       updatePlacementStatus(placement.id, 'error');
-      console.error('Verification failed:', result.message);
+      console.error('Verification failed:', result);
     }
   };
 

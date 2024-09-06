@@ -17,7 +17,7 @@ export const createAndSpawnDeal = async (ao, placement, merkle_root_hex, assignm
     // create process
     const createdAtTimestamp = Math.floor(placement.createdAt / 1000);
     const lua_lines = [
-        "State.Provider = '" + placement.provider + "'",
+        "State.Provider = '" + placement.providerId + "'",
         "State.MerkleRoot = '" + merkle_root_hex + "'",
         "State.Client = '" + assignment.walletAddress + "'",
         "State.Token = '" + config.defaultToken + "'",

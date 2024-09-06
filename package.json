@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ardrive/turbo-sdk": "^1.12.0",
     "@hookform/resolvers": "^3.9.0",
     "@permaweb/aoconnect": "^0.0.59",
     "@radix-ui/react-alert-dialog": "^1.1.1",
@@ -30,7 +31,9 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "immer": "^10.1.1",
+    "install": "^0.13.0",
     "lucide-react": "^0.435.0",
+    "npm": "^10.8.3",
     "path-browserify": "^1.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
