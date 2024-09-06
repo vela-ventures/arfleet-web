@@ -74,52 +74,61 @@ export default function Providers({  }: any) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.entries(announcements).map(([id, data]) => (
-                  <TableRow key={id} className="hover:bg-muted/50 transition-colors">
-                    <TableCell className="font-mono text-xs">{id.substring(0, 15)}...</TableCell>
-                    <TableCell>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="flex items-center">
-                              <Globe className="mr-2 h-4 w-4" />
-                              {data.ConnectionStrings}
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Connection String</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </TableCell>
-                    <TableCell>
-                      {data.StorageCapacity ? (
+                {Object.entries(announcements)
+                  .sort(([, a], [, b]) => {
+                    const aProvisioned = provisionedProviders.includes(a.ConnectionStrings);
+                    const bProvisioned = provisionedProviders.includes(b.ConnectionStrings);
+                    if (aProvisioned && bProvisioned) {
+                      return a.ConnectionStrings.localeCompare(b.ConnectionStrings);
+                    }
+                    return bProvisioned - aProvisioned;
+                  })
+                  .map(([id, data]) => (
+                    <TableRow key={id} className="hover:bg-muted/50 transition-colors">
+                      <TableCell className="font-mono text-xs">{id.substring(0, 15)}...</TableCell>
+                      <TableCell>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div className="flex items-center">
-                                <HardDrive className="mr-2 h-4 w-4" />
-                                {(data.StorageCapacity / (1024 * 1024 * 1024)).toFixed(2)} GB
+                                <Globe className="mr-2 h-4 w-4" />
+                                {data.ConnectionStrings}
                               </div>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Storage Capacity</p>
+                              <p>Connection String</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                      ) : (
-                        <span className="text-muted-foreground">N/A</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {provisionedProviders.includes(data.ConnectionStrings) ? (
-                        <Badge variant="secondary">Provisioned</Badge>
-                      ) : (
-                        ''
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell>
+                        {data.StorageCapacity ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center">
+                                  <HardDrive className="mr-2 h-4 w-4" />
+                                  {(data.StorageCapacity / (1024 * 1024 * 1024)).toFixed(2)} GB
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Storage Capacity</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          <span className="text-muted-foreground">N/A</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {provisionedProviders.includes(data.ConnectionStrings) ? (
+                          <Badge variant="secondary">Provisioned</Badge>
+                        ) : (
+                          ''
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </TableBody>
             </Table>
           )}

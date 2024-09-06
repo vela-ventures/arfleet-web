@@ -7,7 +7,7 @@ import axios from 'axios';
 
 const connection = connect(config.aoConfig);
 
-const MAX_ATTEMPTS = 100;
+const MAX_ATTEMPTS = 200;
 
 class AOClient {
     constructor({ wallet }) {

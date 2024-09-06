@@ -31,6 +31,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { AlertCircle } from "lucide-react"
+import { siDiscord, siX, siGithub } from 'simple-icons'
 
 // Components for other routes (placeholder)
 
@@ -184,7 +185,7 @@ function Header({ theme }) {
       <ThemeToggle />
 
       {devMode && (
-        <Button onClick={resetAODB} variant="outline" size="sm">
+        <Button onClick={resetAODB} variant="outline" size="sm" className="hidden">
           Reset AODB
         </Button>
       )}
@@ -421,6 +422,7 @@ function Sidebar({ activeLink, links }) {
           </nav>
         </div>
         <div className="mt-auto p-4">
+
           <Card>
             <CardHeader className="p-2 pt-0 md:p-4">
               <CardTitle>Beta Version</CardTitle>
@@ -434,6 +436,26 @@ function Sidebar({ activeLink, links }) {
               </p>
             </CardContent>
           </Card>
+
+          {/* Add social icons */}
+          <div className="flex justify-center space-x-4 mb-2     text-black hover:text-gray-800 dark-invert mt-5">
+            <a href="https://discord.gg/CetKmVxwG4" target="_blank" rel="noopener noreferrer" className="opacity-50 hover:opacity-100">
+              <svg role="img" viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                <path d={siDiscord.path} />
+              </svg>
+            </a>
+            <a href="https://twitter.com/aoaccorg" target="_blank" rel="noopener noreferrer" className="opacity-50 hover:opacity-100">
+              <svg role="img" viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                <path d={siX.path} />
+              </svg>
+            </a>
+            <a href="https://github.com/aoacc" target="_blank" rel="noopener noreferrer" className="opacity-50 hover:opacity-100">
+              <svg role="img" viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                <path d={siGithub.path} />
+              </svg>
+            </a>
+          </div>
+
         </div>
       </div>
     </div>

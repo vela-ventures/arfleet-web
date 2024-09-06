@@ -3,10 +3,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StorageAssignment, FileMetadata } from '../types';
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon, X, Check } from 'lucide-react';
+import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon, X, Check, CheckCircleIcon, ExternalLinkIcon } from 'lucide-react';
 import { Placement, useArFleet } from '../contexts/ArFleetContext';
 import { ArpReader } from '@/helpers/arp';
-import { DataItemReader } from '@/helpers/dataitemmod';
+import { DataItemReader, reassembleDataItemForArweave } from '@/helpers/dataitemmod';
 import { AESContainerReader } from '@/helpers/aes';
 import {
   Dialog,
@@ -14,9 +14,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogClose,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { bufferTob64Url, stringToB64Url } from '@/helpers/encodeUtils';
 import { encKeyFromMasterKeyAndSalt } from '@/helpers/encrypt';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
+import { bufferToAscii } from '@/helpers/buf';
+import { downloadUint8ArrayAsFile } from '@/helpers/extra';
+import { DataItem } from "warp-arbundles";
+import { ARFLEET_VERSION } from '@/helpers/version';
+import mime from 'mime';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Switch } from "@/components/ui/switch";
 
 interface FileTreeItem {
   type: 'file' | 'folder';
@@ -27,7 +39,7 @@ interface FileTreeItem {
 }
 
 export default function FileContentViewer() {
-  const { assignments, selectedAssignmentId, masterKey } = useArFleet();
+  const { assignments, selectedAssignmentId, masterKey, wallet } = useArFleet();
   const assignment = assignments.find((a: StorageAssignment) => a.id === selectedAssignmentId);
 
   const [isDownloading, setIsDownloading] = useState(false);
@@ -38,6 +50,11 @@ export default function FileContentViewer() {
   const [shareItem, setShareItem] = useState<FileTreeItem | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isImmortalizeDialogOpen, setIsImmortalizeDialogOpen] = useState(false);
+  const [immortalizeItem, setImmortalizeItem] = useState<FileTreeItem | null>(null);
+  const [immortalizeType, setImmortalizeType] = useState<'encrypted' | 'decrypted'>('encrypted');
+  const [isImmortalizing, setIsImmortalizing] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ id: string; url: string } | null>(null);
 
   useEffect(() => {
     if (isShareDialogOpen && shareItem && masterKey) {
@@ -133,20 +150,20 @@ export default function FileContentViewer() {
     switch (extension) {
       case 'txt':
       case 'md':
-        return <FileTextIcon className="w-5 h-5 mr-2 text-blue-500" />;
+        return <FileTextIcon className="w-full h-full text-blue-500" />;
       case 'js':
       case 'ts':
       case 'py':
       case 'html':
       case 'css':
-        return <FileCodeIcon className="w-5 h-5 mr-2 text-green-500" />;
+        return <FileCodeIcon className="w-full h-full text-green-500" />;
       case 'jpg':
       case 'png':
       case 'gif':
       case 'svg':
-        return <FileImageIcon className="w-5 h-5 mr-2 text-purple-500" />;
+        return <FileImageIcon className="w-full h-full text-purple-500" />;
       default:
-        return <FileIcon className="w-5 h-5 mr-2 text-gray-500" />;
+        return <FileIcon className="w-full h-full text-gray-500" />;
     }
   };
 
@@ -166,6 +183,151 @@ export default function FileContentViewer() {
     setShareUrl(null);
   };
 
+  const openImmortalizeDialog = (item: FileTreeItem) => {
+    setImmortalizeItem(item);
+    setIsImmortalizeDialogOpen(true);
+  };
+
+  const closeImmortalizeDialog = () => {
+    setIsImmortalizeDialogOpen(false);
+    setImmortalizeItem(null);
+    setUploadResult(null);
+  };
+
+  const handleImmortalizeSubmit = async () => {
+    setIsImmortalizing(true);
+    try {
+      // decrypted vs encrypted
+      const dataItemType = immortalizeType === 'encrypted' ? 'encrypted' : 'decrypted';
+
+      console.log(`Immortalizing ${dataItemType} data for ${immortalizeItem?.path}`);
+
+      let dataItemContents: Uint8Array;
+
+      const arpReader = new ArpReader(immortalizeItem?.file?.arpId, assignment.placements[0]);
+      await arpReader.init();
+  
+      if (dataItemType === 'encrypted') {
+        // upload encrypted data item
+        // dataItemContents = await arpReader.slice(0, arpReader.innerByteLength);
+
+        const dataItemReader = new DataItemReader(arpReader);
+        await dataItemReader.init();
+
+        dataItemContents = await dataItemReader.slice(0, await dataItemReader.dataLength);
+      } else {
+        const dataItemReader = new DataItemReader(arpReader);
+        await dataItemReader.init();
+  
+        // upload decrypted data item
+        if (!masterKey) throw new Error('Master key is not set');
+        const aesReader = new AESContainerReader(dataItemReader, masterKey);
+        await aesReader.init();
+
+        const dataItemReader2 = new DataItemReader(aesReader);
+        await dataItemReader2.init();
+
+        dataItemContents = await dataItemReader2.slice(0, dataItemReader2.dataLength);
+      }
+
+      // const assembledDataItem = await reassembleDataItemForArweave(dataItemContents);
+
+      // console.log('assembledDataItem', bufferToAscii(assembledDataItem));
+
+      console.log('dataItemContents', bufferToAscii(dataItemContents));
+
+      const uploadingFileName = (dataItemType === 'encrypted') ? immortalizeItem?.file?.arpId + '.aes' : immortalizeItem?.file?.name;
+
+      // Determine the Content-Type using mime-types
+      const contentType = mime.getType(uploadingFileName || '') || 'application/octet-stream';
+
+      // Sign the data item with the correct Content-Type
+      const signed = await wallet.signDataItem({
+        data: dataItemContents,
+        tags: [
+          {name: "ArFleet-Client", value: "Web"},
+          {name: "ArFleet-Version", value: ARFLEET_VERSION},
+          {
+            name: "ArFleet-DataItem-Type",
+            value: (dataItemType === 'encrypted') ? "aes" : "file"
+          },
+          {
+            name: "ArFleet-DataItem-Path",
+            value: immortalizeItem?.file?.path
+          },
+          {
+            name: "name",
+            value: uploadingFileName
+          },
+          {
+            name: "Content-Type",
+            value: contentType
+          }
+      ]
+      });
+
+
+      ////////
+      // Send to Arweave
+      ///////
+
+      // const file = downloadUint8ArrayAsFile(assembledDataItem, 'dataitem.dat');
+
+      // load the result into a DataItem instance
+      const signedDataItem = new DataItem(signed);
+
+      console.log('signedDataItem', signedDataItem);
+
+      const result = await fetch(`https://up.arweave.net/tx/arweave`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          Accept: 'application/json'
+        },
+        body: signedDataItem.getRaw()
+      });
+
+      if (result.ok) {
+        console.log('Data item uploaded successfully');
+
+        const resp = await result.json();
+        const txId = resp.id;
+        console.log('id', txId);
+        
+        // Set the upload result
+        setUploadResult({
+          id: txId,
+          url: `https://arweave.net/${txId}`
+        });
+      } else {
+        console.error('Failed to upload data item');
+        // You might want to show an error message to the user here
+      }
+
+      console.log('result', result);
+
+      // fetch(
+      //   `https://${HOST}/tx/arweave`,
+      //   {
+      //     method: 'POST',
+      //     headers: {
+      //       'Content-Type': 'application/octet-stream',
+      //       Accept: 'application/json'
+      //     },
+      //     body: await sign({ data, tags, target, anchor })
+      //       .then((dataItem) => dataItem.getRaw())
+      //   }
+      // )
+  
+    } catch (error) {
+      console.error('Error immortalizing file:', error);
+      // You might want to show an error message to the user here
+    } finally {
+      setIsImmortalizing(false);
+      // Don't close the dialog here, as we want to show the result
+    }
+  };
+
   const renderFileTree = (items: FileTreeItem[], depth = 0) => {
     return items.map((item) => (
       <li
@@ -174,13 +336,13 @@ export default function FileContentViewer() {
         onMouseEnter={() => item.type === 'folder' && setHoveredFolder(item.path)}
         onMouseLeave={() => setHoveredFolder(null)}
       >
-        <div className={`flex items-center py-2 px-2 group text-sm rounded-md
+        <div className={`grid grid-cols-[auto_1fr_auto] gap-2 items-center py-2 px-2 group text-sm rounded-md
           ${hoveredFolder === item.path ? 'bg-gray-200 dark:bg-gray-700' : ''}
           ${isDescendantOfHoveredFolder(item.path) ? 'bg-gray-100 dark:bg-gray-800' : ''}
           ${item.type === 'file' ? 'hover:bg-gray-100 dark:hover:bg-gray-800' : ''}`}
         >
           <Checkbox
-            className="opacity-0 group-hover:opacity-100 mr-2 h-4 w-4 flex-shrink-0"
+            className={`${selectedItems.has(item.path) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} h-4 w-4`}
             checked={selectedItems.has(item.path)}
             onCheckedChange={(checked) => {
               const newSelected = new Set(selectedItems);
@@ -192,45 +354,49 @@ export default function FileContentViewer() {
               setSelectedItems(newSelected);
             }}
           />
-          {item.type === 'folder' ? (
-            <FolderIcon className="w-5 h-5 mr-2 flex-shrink-0 text-yellow-500" />
-          ) : (
-            getFileIcon(item.name)
-          )}
-          <span className={`flex-grow truncate ${item.type === 'folder' ? 'font-semibold' : ''}`} title={item.name}>
-            {item.name}
-          </span>
+          <div className="flex items-center min-w-0">
+            <div className="flex-shrink-0 w-5 h-5 mr-2">
+              {item.type === 'folder' ? (
+                <FolderIcon className="w-full h-full text-yellow-500" />
+              ) : (
+                getFileIcon(item.name)
+              )}
+            </div>
+            <span className="truncate" title={item.name}>
+              {item.name}
+            </span>
+          </div>
           {item.type === 'file' && (
-            <div className="flex-shrink-0 flex space-x-1">
+            <div className="flex flex-wrap gap-2 items-center justify-end">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => item.file && downloadFile(item.file)}
                 disabled={downloadingFilePath === item.path}
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
-                title="Download"
+                className="p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
-                <DownloadIcon className="w-4 h-4" />
+                <DownloadIcon className="w-4 h-4 mr-1" />
+                {downloadingFilePath === item.path ? 'Downloading...' : 'Download'}
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => openShareDialog(item)}
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
-                title="Share"
+                className="p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
-                <ShareIcon className="w-4 h-4" />
+                <ShareIcon className="w-4 h-4 mr-1" />
+                Share
               </Button>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => console.log('Immortalize clicked')} // Add your immortalize logic here
-                className="opacity-0 group-hover:opacity-100 p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
-                title="Immortalize"
+                onClick={() => openImmortalizeDialog(item)}
+                className="p-1 h-7 bg-white dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors duration-200 text-black dark:text-white border-gray-300 dark:border-gray-600"
               >
-                <span className="w-4 h-4 inline-flex items-center justify-center border border-current rounded-full text-xs">
+                <span className="w-4 h-4 mr-1 inline-flex items-center justify-center border border-current rounded-full text-xs">
                   <span className="relative bottom-[1px]">a</span>
                 </span>
+                Immortalize
               </Button>
             </div>
           )}
@@ -364,6 +530,113 @@ export default function FileContentViewer() {
               'Copy URL'
             )}
           </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isImmortalizeDialogOpen} onOpenChange={closeImmortalizeDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              {uploadResult ? 'File Immortalized Successfully' : 'Immortalize on Arweave'}
+            </DialogTitle>
+          </DialogHeader>
+          {uploadResult ? (
+            <div className="flex flex-col space-y-4">
+              <Alert className="bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-900">
+                <CheckCircleIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <AlertTitle className="text-green-800 dark:text-green-200">Success!</AlertTitle>
+                <AlertDescription className="text-green-700 dark:text-green-300">
+                  Your file has been successfully immortalized on Arweave.
+                </AlertDescription>
+              </Alert>
+              <div>
+                <Label className="text-sm font-medium">Transaction ID:</Label>
+                <Input value={uploadResult.id} readOnly className="mt-1 bg-gray-50 dark:bg-gray-800" />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Arweave URL:</Label>
+                <Input value={uploadResult.url} readOnly className="mt-1 bg-gray-50 dark:bg-gray-800" />
+              </div>
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button 
+                  onClick={() => window.open(uploadResult.url, '_blank')}
+                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  <ExternalLinkIcon className="mr-2 h-4 w-4" />
+                  View on Arweave
+                </Button>
+                <Button 
+                  onClick={() => {
+                    closeImmortalizeDialog();
+                    setUploadResult(null);
+                  }}
+                  variant="outline"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Move this file from temporary ArFleet to permanent Arweave storage:
+                </p>
+                <div>
+                  <p className="text-sm font-medium">Name/Path:</p>
+                  <p className="text-sm text-muted-foreground">{immortalizeItem?.path}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">ARP ID:</p>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Input
+                          className="text-sm text-muted-foreground truncate"
+                          value={immortalizeItem?.file?.arpId || ''}
+                          disabled
+                          title={immortalizeItem?.file?.arpId}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" align="start" className="max-w-xs">
+                        <p className="text-xs break-all">{immortalizeItem?.file?.arpId}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Separator className="my-4" />
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="immortalize-type" className="text-sm font-medium">Choose data to immortalize:</Label>
+                    <div className="flex items-center justify-between mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                      <span className={`text-sm ${immortalizeType === 'encrypted' ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                        Encrypted
+                      </span>
+                      <Switch
+                        checked={immortalizeType === 'decrypted'}
+                        onCheckedChange={(checked) => setImmortalizeType(checked ? 'decrypted' : 'encrypted')}
+                        disabled={isImmortalizing}
+                        className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-blue-500"
+                      />
+                      <span className={`text-sm ${immortalizeType === 'decrypted' ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                        Decrypted
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {immortalizeType === 'encrypted' 
+                      ? "Store the encrypted data on Arweave. You'll need the decryption key to access the content later."
+                      : "Store the decrypted data on Arweave. The content will be publicly accessible."}
+                  </p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={closeImmortalizeDialog} variant="outline" disabled={isImmortalizing}>Cancel</Button>
+                <Button onClick={handleImmortalizeSubmit} disabled={isImmortalizing}>
+                  {isImmortalizing ? 'Immortalizing...' : 'Proceed'}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

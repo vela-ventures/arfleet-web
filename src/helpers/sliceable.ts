@@ -162,6 +162,10 @@ export abstract class Sliceable {
       }
       return result;
     }
+
+    async read(): Promise<Uint8Array> {
+      return new Uint8Array(await this.slice(0, await this.getByteLength()));
+    }
 }
 
 function isTwoParamFunction(func: any): func is (start: number, end: number) => Promise<Uint8Array> {

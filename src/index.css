@@ -83,3 +83,7 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 } */
+
+html.dark .dark-invert {
+  filter: invert(1) hue-rotate(180deg);
+}

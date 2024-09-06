@@ -25,6 +25,7 @@ class HashChunk {
 
 export class DataItem extends Sliceable {
     signatureType: Uint8Array;
+    signatureTypeBin: Uint8Array;
     signatureLength: number;
     owner: string;
     target: string | null;
@@ -68,6 +69,7 @@ export class DataItem extends Sliceable {
     ) {
         super();
         this.signatureType = new Uint8Array([1, 0]); // Arweave
+        this.signatureTypeBin = new Uint8Array([1]);
         this.signatureLength = 512;
         this.signature = null;
         this.owner = owner;
@@ -97,9 +99,10 @@ export class DataItem extends Sliceable {
 
         // console.log(this);
         let signArray = [];
+        
         signArray.push(stringToBuffer("dataitem"));
         signArray.push(stringToBuffer("1"));
-        signArray.push(this.signatureType);
+        signArray.push(this.signatureTypeBin);
         signArray.push(b64UrlToBuffer(this.owner));
         if (this.target) signArray.push(b64UrlToBuffer(this.target));
         if (this.anchor) signArray.push(b64UrlToBuffer(this.anchor));
@@ -114,7 +117,7 @@ export class DataItem extends Sliceable {
         return await deepHashChunks(
             signArray,
             await sha384(tag),
-            true
+            false /* do not hash the last chunk */
         );
     }
 
@@ -183,6 +186,9 @@ export class DataItem extends Sliceable {
       if (this.signature === null && !dryRun) {
         await this.sign();
       }
+
+      console.log('target', this.target);
+      console.log('anchor', this.anchor);
 
       const signature = dryRun ? new Uint8Array(this.signatureLength).fill(0) : this.signature!;
 
@@ -614,4 +620,25 @@ export class DataItemReader extends SliceableReader {
     // console.log('end', end);
     return await this.inner.slice(this.dataOffset + start, this.dataOffset + end);
   }
+}
+
+export function reassembleDataItemForArweave(data: Uint8Array): Uint8Array {
+  // make sure first 8 bytes are "arf::~di"
+  if (bufferToAscii(data.slice(0, 8)) !== "arf::~di") throw new Error("Invalid magic bytes: " + bufferToAscii(data.slice(0, 8)));
+
+  // read next 8 bytes as data length
+  const dataLength = byteArrayToLong(data.slice(8, 16));
+
+  // read next dataLength bytes as data
+  const dataBytes = data.slice(16, 16 + dataLength);
+  
+  // and now the header, the rest
+  const header = data.slice(16 + dataLength, data.byteLength);
+
+  const result = concatBuffers([
+    header,
+    dataBytes,
+  ]);
+
+  return result;
 }

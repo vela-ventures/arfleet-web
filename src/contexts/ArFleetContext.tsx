@@ -32,6 +32,7 @@ import { checkPasses, hasPass, hasPassLive } from '../arfleet/passes';
 import { getAoInstance } from '../arfleet/ao';
 import { createAndSpawnDeal, fundDeal } from '../arfleet/deal';
 import utils from '../arfleet/utils';
+import { SingleThreadedQueue } from '@/helpers/singleThreadedQueue';
 const CHUNK_SIZE = 8192;
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
@@ -200,6 +201,7 @@ export class StorageAssignment {
   encryptedManifestArp: string | null;
   walletSigner: WalletSigner | null;
   processQueue: CallbackQueue;
+  fundingDealQueue: SingleThreadedQueue;
   walletAddress: string | null;
   createdAt: number;
   constructor(data: Partial<StorageAssignment>) {
@@ -216,6 +218,7 @@ export class StorageAssignment {
     this.walletSigner = null;
     this.walletAddress = null;
     this.processQueue = new CallbackQueue();
+    this.fundingDealQueue = new SingleThreadedQueue();
     this.createdAt = Date.now();
 
     Object.assign(this, data);
@@ -228,6 +231,7 @@ export class StorageAssignment {
       id: this.id,
       // files: this.files.map(file => file.serialize()),
       status: this.status,
+      createdAt: this.createdAt,
       placements: this.placements.map(placement => {
         if (placement instanceof Placement) {
           return placement.serialize();
@@ -252,7 +256,7 @@ export class StorageAssignment {
 
 // Move DEFAULT_SETTINGS outside of the component
 const DEFAULT_SETTINGS = {
-  providers: ['http://localhost:8890', 'http://localhost:8330']
+  providers: ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io']
 }
 
 interface ArFleetContextType {
@@ -422,14 +426,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [wallet, ao]);
 
   useEffect(() => {
-    // const provisionedProviders = ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io'];
-    const provisionedProviders = [];
-    if (devMode) {
-      provisionedProviders.push('http://localhost:8890');
-      provisionedProviders.push('http://localhost:8330');
-      provisionedProviders.push('http://localhost:8331');
-      // provisionedProviders.push('http://localhost:8332');
-    }
+    const provisionedProviders = ['https://p1.arfleet.io', 'https://p2.arfleet.io', 'https://p3.arfleet.io'];
+    // const provisionedProviders = [];
+    // if (devMode) {
+    //   provisionedProviders.push('http://localhost:8890');
+    //   provisionedProviders.push('http://localhost:8330');
+    //   provisionedProviders.push('http://localhost:8331');
+    //   // provisionedProviders.push('http://localhost:8332');
+    // }
     setProvisionedProviders(provisionedProviders);
   }, [devMode]);
 
@@ -937,15 +941,20 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   fundDealRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
-    try {
-      console.log(`Funding deal for placement ${placement.id}`);
-      await fundDeal(aoRef.current, placement);
-      console.log(`Deal funded for placement ${placement.id}`);
-      return 'accepting';
-    } catch (error) {
-      console.error(`Error funding deal for placement ${placement.id}:`, error);
-      return 'error';
-    }
+    return new Promise((resolve, reject) => {
+      assignment.fundingDealQueue.add(async () => {
+        try {
+          console.log(`Funding deal for placement ${placement.id}`);
+          await fundDeal(aoRef.current, placement);
+          console.log(`Deal funded for placement ${placement.id}`);
+
+          resolve('accepting');
+        } catch (error) {
+          console.error(`Error funding deal for placement ${placement.id}:`, error);
+          resolve('error');
+        }
+      });
+    });
   };
 
   acceptDealRef.current = async (placement: Placement, assignment: StorageAssignment): Promise<Placement['status']> => {
@@ -1234,11 +1243,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const newAssignment = new StorageAssignment({
       id: assignmentId,
       files: acceptedFiles.map(file => {
-        const fullPath = (file as any).path || file.webkitRelativePath || file.name;
-        return new FileMetadata({
-          ...file,
-          path: fullPath
-        });
+        return new FileMetadata(file);
       }),
       rawFiles: acceptedFiles,
       status: 'created',
@@ -1246,6 +1251,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       progress: 0,
       walletSigner: walletSigner,
       walletAddress: address,
+      createdAt: Date.now(), // Add this line to set the creation timestamp
       dataItemFactory: new DataItemFactory(
         /* owner */pubKeyB64!,
         /* target */bufferTob64Url(await sha256(stringToBuffer("empty-target"))), 
@@ -1256,7 +1262,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ],
       )
     });
-  
+
     setAssignmentsState(prev => {
       const updatedAssignments = [...prev, newAssignment];
       aodb?.set(`assignment:${newAssignment.id}`, newAssignment.serialize());

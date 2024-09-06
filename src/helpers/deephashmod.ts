@@ -71,4 +71,4 @@ export async function deepHashChunks(
   
     const newAcc = await sha384(hashPair);
     return await deepHashChunks(chunks.slice(1), newAcc, skipHighestLevel);
-}  
+}

@@ -8,8 +8,9 @@ export default function StorageAssignmentList() {
   const { assignments, selectedAssignmentId, setSelectedAssignmentId, fetchAndProcessManifest, masterKey } = useArFleet();
 
   useEffect(() => {
-    if (!selectedAssignmentId && assignments.length > 0) {
-      setSelectedAssignmentId(assignments[0].id);
+    const sortedAssignments = [...assignments].sort((a, b) => b.createdAt - a.createdAt);
+    if (!selectedAssignmentId && sortedAssignments.length > 0) {
+      setSelectedAssignmentId(sortedAssignments[0].id);
     }
   }, [assignments, selectedAssignmentId, setSelectedAssignmentId]);
 
