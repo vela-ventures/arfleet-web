@@ -1,6 +1,0 @@
-[] progress not being updated until i click the assignment
-[] auto select the assignment that i just dropped, or the first one at least
-
-[] search not working
-[] navigation
-[] social links
