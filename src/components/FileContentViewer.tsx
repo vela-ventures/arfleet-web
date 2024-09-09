@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StorageAssignment, FileMetadata } from '../types';
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon, X, Check, CheckCircleIcon, ExternalLinkIcon } from 'lucide-react';
+import { FolderIcon, FileIcon, FileTextIcon, FileCodeIcon, FileImageIcon, DownloadIcon, ShareIcon, X, Check, CheckCircleIcon, ExternalLinkIcon, Loader2 } from 'lucide-react';
 import { Placement, useArFleet } from '../contexts/ArFleetContext';
 import { ArpReader } from '@/helpers/arp';
 import { DataItemReader, reassembleDataItemForArweave } from '@/helpers/dataitemmod';
@@ -41,6 +41,7 @@ interface FileTreeItem {
 export default function FileContentViewer() {
   const { assignments, selectedAssignmentId, masterKey, wallet } = useArFleet();
   const assignment = assignments.find((a: StorageAssignment) => a.id === selectedAssignmentId);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
@@ -55,6 +56,12 @@ export default function FileContentViewer() {
   const [immortalizeType, setImmortalizeType] = useState<'encrypted' | 'decrypted'>('encrypted');
   const [isImmortalizing, setIsImmortalizing] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ id: string; url: string } | null>(null);
+
+  useEffect(() => {
+    if (assignment) {
+      setIsLoading(assignment.files.length === 0);
+    }
+  }, [assignment]);
 
   useEffect(() => {
     if (isShareDialogOpen && shareItem && masterKey) {
@@ -367,7 +374,7 @@ export default function FileContentViewer() {
             </span>
           </div>
           {item.type === 'file' && item.file?.arpId && (
-            <div className="flex flex-wrap gap-2 items-center justify-end">
+            <div className="flex flex-wrap gap-2 items-center justify-end invisible group-hover:visible">
               <Button
                 size="sm"
                 variant="outline"
@@ -490,11 +497,18 @@ export default function FileContentViewer() {
           <TabsTrigger value="files">Files</TabsTrigger>
         </TabsList>
         <TabsContent value="files">
-          <div className="overflow-y-auto">
-            <ul className="mt-1">
-              {renderFileTree(fileTree)}
-            </ul>
-          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center p-4">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <span>Loading files...</span>
+            </div>
+          ) : (
+            <div className="overflow-y-auto">
+              <ul className="mt-1">
+                {renderFileTree(fileTree)}
+              </ul>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
       <Dialog open={isShareDialogOpen} onOpenChange={closeShareDialog}>

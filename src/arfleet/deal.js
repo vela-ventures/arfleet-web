@@ -1,7 +1,7 @@
 // const config = require('./config');
 import config from './config';
 
-export const createAndSpawnDeal = async (ao, placement, merkle_root_hex, assignment) => {
+export const createAndSpawnDeal = async (ao, placement, merkle_root_hex, arpId, assignment) => {
     const dealDuration = 1 * 365 * 24 * 60 * 60; // todo
     
     // // available, contact about the placement
@@ -19,6 +19,7 @@ export const createAndSpawnDeal = async (ao, placement, merkle_root_hex, assignm
     const lua_lines = [
         "State.Provider = '" + placement.providerId + "'",
         "State.MerkleRoot = '" + merkle_root_hex + "'",
+        "State.ArpRoot = '" + arpId + "'",
         "State.Client = '" + assignment.walletAddress + "'",
         "State.Token = '" + config.defaultToken + "'",
         "State.RequiredReward = " + placement.requiredReward + "",

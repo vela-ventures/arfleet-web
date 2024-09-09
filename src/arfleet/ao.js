@@ -38,7 +38,9 @@ class AOClient {
         return await this.sendAction(process_id, action, JSON.stringify(data), tags, attempt);
     }
     
-    async sendAction(process_id, action, data, tags = {}, attempt = 0) {
+    async sendAction(process_id, action, data, tags = {}, attempt = 0, failOnSignerFail = false) {
+        const dontAttempt = false;
+        
         try {
             if (!attempt) attempt = 0;
     
@@ -53,12 +55,21 @@ class AOClient {
                 t.push({ name: key, value: tags[key] });
             }
 
-            const res = await connection.message({
-                process: process_id,
-                signer: this.signer,
-                tags: t,
-                data: data,
-            });
+            let res;
+            try {
+                res = await connection.message({
+                    process: process_id,
+                    signer: this.signer,
+                    tags: t,
+                    data: data,
+                });    
+            } catch (e) {
+                if (failOnSignerFail) {
+                    dontAttempt = true;
+                } else {
+                    throw e;
+                }
+            }
     
             console.log({ res });
     
@@ -84,6 +95,10 @@ class AOClient {
 
             // return resdata;
         } catch (e) {
+            if (dontAttempt) {
+                throw e;
+            }
+
             if (attempt > MAX_ATTEMPTS) {
                 throw e;
             } else {

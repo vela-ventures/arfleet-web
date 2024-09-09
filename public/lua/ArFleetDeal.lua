@@ -32,7 +32,9 @@ State = {
 
     Challenge = "",
 
-    Logs = {}
+    Logs = {},
+
+    ArpRoot = ""
 }
 
 function Log(msg)

@@ -32,6 +32,8 @@ import { Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { AlertCircle } from "lucide-react"
 import { siDiscord, siX, siGithub } from 'simple-icons'
+import { connect } from 'http2'
+import { useToast } from "@/hooks/use-toast"
 
 // Components for other routes (placeholder)
 
@@ -103,8 +105,10 @@ function Header({ theme }) {
   const { arConnected, devMode, resetAODB } = useArFleet();
   
   const buttonStyle = theme !== 'dark' 
-    ? { accent: "rgb(220, 220, 250)", className: "text-gray-700" }
-    : { accent: "rgb(0, 0, 0)", className: "text-white" };
+    ? { accent: "rgb(220, 220, 250)", className: "!text-gray-700" }
+    : { accent: "rgb(0, 0, 0)", className: "!text-white" };
+
+  // console.log({buttonStyle, theme})
 
   return (
     <header className="flex h-14 items-center gap-4 border-b bg-muted/40 px-4 lg:h-[60px] lg:px-6">
@@ -217,7 +221,35 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   isGlobalDragActive: boolean;
 }) {
   const location = useLocation()
-  const { arConnected, passStatus, wallet, address, masterKey } = useArFleet();
+  const { arConnected, passStatus, wallet, address, masterKey, ao } = useArFleet();
+  const [warBalance, setWarBalance] = useState<number | null>(null);
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const checkWarBalance = async () => {
+      if (arConnected && ao && address) {
+        try {
+          const balance = await ao.getDefaultTokenBalance(address);
+          setWarBalance(balance);
+        } catch (error) {
+          console.error('Error fetching wAR balance:', error);
+          setWarBalance(null);
+        }
+      }
+    };
+
+    checkWarBalance();
+  }, [arConnected, ao, address]);
+
+  useEffect(() => {
+    if (warBalance !== null && warBalance < 0.0001) {
+      toast({
+        title: "Insufficient wAR Balance",
+        description: "You need at least 0.0001 wAR to use ArFleet. Please add more wAR to your balance.",
+        duration: 5000,
+      })
+    }
+  }, [warBalance, toast]);
 
   const links = [
     { name: "My ArFleet", href: "/", icon: <CloudUpload className="h-4 w-4" />, component: <MyArFleet masterKey={masterKey} isGlobalDragActive={isGlobalDragActive} /> },
@@ -247,6 +279,12 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
       case 'error':
         return <ErrorUI />;
       default:
+        if (warBalance === null) {
+          return <LoadingWarBalanceUI />;
+        }
+        if (warBalance < 0.0001) {
+          return <InsufficientWarBalanceUI balance={warBalance} />;
+        }
         return (
           <Routes>
             {links.map((link, index) => (
@@ -387,6 +425,53 @@ function ErrorUI() {
       >
         Retry
       </Button>
+    </div>
+  );
+}
+
+function LoadingWarBalanceUI() {
+  return (
+    <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800">
+      <Card className="w-[400px] shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-center">Checking wAR Balance</CardTitle>
+          <CardDescription className="text-center">Please wait while we verify your wAR balance</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
+            This may take a few moments...
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function InsufficientWarBalanceUI({ balance }: { balance: number }) {
+  return (
+    <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800">
+      <Card className="w-[400px] shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-center">Insufficient wAR Balance</CardTitle>
+          <CardDescription className="text-center">You need at least 0.0001 wAR (Wrapped AR)<br/>to use ArFleet</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center">
+          <AlertCircle className="h-12 w-12 text-yellow-500 mb-4" />
+          <p className="text-sm text-gray-600 dark:text-gray-300 text-center mb-4">
+            Your current balance: {balance.toFixed(4)} wAR
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 text-center mb-4">
+            Please add more wAR to your balance to be able to fund storage deals.
+          </p>
+          <Button 
+            onClick={() => window.open("https://aox.xyz/#/beta", "_blank")}
+            className="w-full"
+          >
+            Bridge AR &rarr; wAR on AOX
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

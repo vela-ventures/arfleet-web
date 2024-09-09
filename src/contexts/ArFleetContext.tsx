@@ -33,6 +33,7 @@ import { getAoInstance } from '../arfleet/ao';
 import { createAndSpawnDeal, fundDeal } from '../arfleet/deal';
 import utils from '../arfleet/utils';
 import { SingleThreadedQueue } from '@/helpers/singleThreadedQueue';
+import FundingModal from '../components/FundingModal';
 const CHUNK_SIZE = 8192;
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
@@ -252,6 +253,19 @@ export class StorageAssignment {
       placements: data.placements.map(Placement.unserialize),
     });
   }
+
+  calculateSummarizedStatus(): string {
+    if (this.status === 'completed') return 'completed';
+    if (this.status === 'error') return 'error';
+
+    const placementStatuses = this.placements.map(p => p.status);
+    
+    if (placementStatuses.every(status => status === 'error')) return 'error';
+    if (placementStatuses.some(status => status === 'completed')) return 'partially completed';
+    if (this.status === 'created' || this.status === 'chunking' || this.status === 'uploading') return 'interrupted';
+
+    return this.status;
+  }
 }
 
 // Move DEFAULT_SETTINGS outside of the component
@@ -402,7 +416,10 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [ao, setAo] = useState<any | null>(null);
   const aoRef = useRef<any | null>(null);
 
-  const [devMode] = useState<boolean>(true); // or false, depending on your preference
+  const [devMode] = useState<boolean>(true);
+
+  const [isFundingModalOpen, setIsFundingModalOpen] = useState(false);
+  const [currentFundingPlacementId, setCurrentFundingPlacementId] = useState<string | null>(null);
 
   const [settings, setSettings] = useLocalStorageState('arFleetSettings', {
     defaultValue: DEFAULT_SETTINGS
@@ -470,9 +487,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [arConnected, ao, address, passStatus])
 
-  useEffect(() => {
-    (async () => {
-      if (arConnected && ao && address) {
+  const updateWARBalance = useCallback(async () => {
+    if (arConnected && ao && address) {
+      try {
         // get wAR balance
         const wARBalance = await ao.getDefaultTokenBalance(address);
         console.log({wARBalance});
@@ -485,8 +502,18 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
             balanceElement.textContent = `${wARBalance.toFixed(4)} wAR`;
           }
         }
-        }
-    })();
+      } catch (error) {
+        console.error('Error updating wAR balance:', error);
+      }
+    }
+  }, [arConnected, ao, address]);
+
+  useEffect(() => {
+    updateWARBalance(); // Initial update
+
+    const intervalId = setInterval(updateWARBalance, 30000);
+
+    return () => clearInterval(intervalId);
   }, [arConnected, ao, address]);
 
   useEffect(() => {
@@ -635,8 +662,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [connectWallet]);
 
   const updatePlacementStatus = useCallback((placementId: string, status: Placement['status']) => {
-    setAssignmentsState(prev => {
-      const newAssignments = prev.map(a => {
+    setAssignmentsState(prevState => {
+      const newAssignments = prevState.map(a => {
         const updatedPlacements = a.placements.map(p => {
           if (p.id === placementId) {
             const updatedPlacement = new Placement({ ...p, status });
@@ -930,8 +957,31 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placement.merkleRoot = merkleRootHex;
       placement.merkleTree = merkleTreeHex;
 
-      const processId = await createAndSpawnDeal(aoRef.current, placement, merkleRootHex, assignment);
+      const arpId = assignment.encryptedManifestArp;
+
+      const processId = await createAndSpawnDeal(aoRef.current, placement, merkleRootHex, arpId, assignment);
+      
+      // Update the assignments state with the new processId
+      setAssignmentsState(prevState => 
+        prevState.map(a => {
+          if (a.id === assignment.id) {
+            return {
+              ...a,
+              placements: a.placements.map(p => 
+                p.id === placement.id ? { ...p, processId } : p
+              )
+            };
+          }
+          return a;
+        })
+      );
+
+      // And update the current copy just in case (needed for fundDealRef next)
       placement.processId = processId;
+
+      // // Update only the placement in AODB
+      // aodb?.set(`placement:${placement.id}`, { ...placement, processId, status: 'fundingDeal' });
+
       console.log(`Deal spawned for placement ${placement.id}: ${processId}`);
       return 'fundingDeal';
     } catch (error) {
@@ -945,11 +995,22 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       assignment.fundingDealQueue.add(async () => {
         try {
           console.log(`Funding deal for placement ${placement.id}`);
+
+          setIsFundingModalOpen(true);
+          setCurrentFundingPlacementId(placement.id);
+
           await fundDeal(aoRef.current, placement);
+
+          setIsFundingModalOpen(false);
+          setCurrentFundingPlacementId(null);    
+
           console.log(`Deal funded for placement ${placement.id}`);
 
           resolve('accepting');
         } catch (error) {
+          setIsFundingModalOpen(false);
+          setCurrentFundingPlacementId(null);
+    
           console.error(`Error funding deal for placement ${placement.id}:`, error);
           resolve('error');
         }
@@ -1199,6 +1260,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         createdAt: Date.now(),
         requiredReward: 500, // todo: calculate
         requiredCollateral: 1000, // todo: calculate
+        processId: null,
       });
     }));
 
@@ -1419,5 +1481,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     passStatus,
   };
 
-  return <ArFleetContext.Provider value={value}>{children}</ArFleetContext.Provider>;
+  return <ArFleetContext.Provider value={value}>
+    {children}
+    <FundingModal isOpen={isFundingModalOpen} placementId={currentFundingPlacementId} />
+  </ArFleetContext.Provider>;
 };

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
 import { StorageAssignment } from '../types';
@@ -14,7 +14,9 @@ export default function StorageAssignmentList() {
     }
   }, [assignments, selectedAssignmentId, setSelectedAssignmentId]);
 
-  const sortedAssignments = [...assignments].sort((a, b) => b.createdAt - a.createdAt);
+  const sortedAssignments = useMemo(() => {
+    return [...assignments].sort((a, b) => b.createdAt - a.createdAt);
+  }, [assignments]);
 
   const handleSelectAssignment = (assignment: StorageAssignment) => {
     setSelectedAssignmentId(assignment.id);
