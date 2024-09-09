@@ -39,7 +39,7 @@ class AOClient {
     }
     
     async sendAction(process_id, action, data, tags = {}, attempt = 0, failOnSignerFail = false) {
-        const dontAttempt = false;
+        let dontAttempt = false;
         
         try {
             if (!attempt) attempt = 0;
