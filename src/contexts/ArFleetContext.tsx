@@ -556,6 +556,12 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
             
             const assignment = StorageAssignment.unserialize(parsedAssignmentData);
+            
+            // Change status from 'uploading' to 'interrupted'
+            if (assignment.status === 'uploading') {
+              assignment.status = 'interrupted';
+            }
+
             assignment.placements = await Promise.all(assignment.placements.map(async (placementData) => {
               const placementFullData = aodbInstance.get(`placement:${placementData.id}`);
               let parsedPlacementData;
@@ -578,6 +584,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         const validAssignments = loadedAssignments.filter(Boolean) as StorageAssignment[];
         setAssignmentsState(validAssignments);
+
+        // Update the modified assignments in AODB
+        validAssignments.forEach(assignment => {
+          aodbInstance.set(`assignment:${assignment.id}`, assignment.serialize());
+        });
       } else {
         console.error('parsedAssignmentIds is not an array:', parsedAssignmentIds);
       }
