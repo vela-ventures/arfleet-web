@@ -83,7 +83,7 @@ export default function FileContentViewer() {
     const key = await deriveKey(masterKey, shareItem.file!, placement);
     const keyB64 = bufferTob64Url(key);
     const encodedName = stringToB64Url(shareItem.file!.name);
-    return `${window.location.origin}/download/${shareItem.file!.arpId}/${keyB64}/${encodedName}/${encodeURIComponent(placementProviderUrl)}`;
+    return `${window.location.origin}/#/download/${shareItem.file!.arpId}/${keyB64}/${encodedName}/${encodeURIComponent(placementProviderUrl)}`;
   };
 
   const deriveKey = async (masterKey: Uint8Array, file: FileMetadata, placement: Placement) => {
