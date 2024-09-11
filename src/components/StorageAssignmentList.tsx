@@ -3,6 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
 import { StorageAssignment } from '../types';
 import { useArFleet } from '../contexts/ArFleetContext';
+import { getProgressColorByPlacementStatus } from '@/helpers/progresscolor';
 
 export default function StorageAssignmentList() {
   const { assignments, selectedAssignmentId, setSelectedAssignmentId, fetchAndProcessManifest, masterKey } = useArFleet();
@@ -50,12 +51,7 @@ export default function StorageAssignmentList() {
                   key={placement.id}
                   value={placement.status === 'completed' ? 100 : placement.progress} 
                   className="h-1" 
-                  indicatorClassName={cn(
-                    "transition-all",
-                    placement.status === 'completed' ? 'bg-green-500' :
-                    placement.status === 'in_progress' ? 'bg-blue-500' :
-                    'bg-yellow-500'
-                  )}
+                  indicatorClassName={getProgressColorByPlacementStatus(placement.status, assignment.status)}
                 />
               ))}
             </div>
