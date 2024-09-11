@@ -226,7 +226,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   const { toast } = useToast()
 
   useEffect(() => {
-    const checkWarBalance = async () => {
+    const checkWalletAndBalance = async () => {
       if (arConnected && ao && address) {
         try {
           const balance = await ao.getDefaultTokenBalance(address);
@@ -235,10 +235,12 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
           console.error('Error fetching wAR balance:', error);
           setWarBalance(null);
         }
+      } else {
+        setWarBalance(null);
       }
     };
 
-    checkWarBalance();
+    checkWalletAndBalance();
   }, [arConnected, ao, address]);
 
   useEffect(() => {
@@ -271,28 +273,33 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
       return <NotConnectedUI theme={theme} />;
     }
 
-    switch (passStatus) {
-      case 'checking':
-        return <CheckingPassUI />;
-      case 'notfound':
-        return <PassNotFoundUI address={address} />;
-      case 'error':
-        return <ErrorUI />;
-      default:
-        if (warBalance === null) {
-          return <LoadingWarBalanceUI />;
-        }
-        if (warBalance < 0.0001) {
-          return <InsufficientWarBalanceUI balance={warBalance} />;
-        }
-        return (
-          <Routes>
-            {links.map((link, index) => (
-              <Route key={index} path={link.href} element={link.component} />
-            ))}
-          </Routes>
-        );
+    if (passStatus === 'checking') {
+      return <CheckingPassUI />;
     }
+
+    if (passStatus === 'notfound') {
+      return <PassNotFoundUI address={address} />;
+    }
+
+    if (passStatus === 'error') {
+      return <ErrorUI />;
+    }
+
+    if (warBalance === null) {
+      return <LoadingWarBalanceUI />;
+    }
+
+    if (warBalance < 0.0001) {
+      return <InsufficientWarBalanceUI balance={warBalance} />;
+    }
+
+    return (
+      <Routes>
+        {links.map((link, index) => (
+          <Route key={index} path={link.href} element={link.component} />
+        ))}
+      </Routes>
+    );
   };
 
   return (
