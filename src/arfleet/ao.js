@@ -8,6 +8,7 @@ import axios from 'axios';
 const connection = connect(config.aoConfig);
 
 const MAX_ATTEMPTS = 200;
+const RETRY_DELAY_MS = 200; // ms delay between retries
 
 class AOClient {
     constructor({ wallet }) {
@@ -29,7 +30,8 @@ class AOClient {
                 throw e;
             } else {
                 console.log("Retrying...");
-                return getResult(process_id, message, attempt + 1);
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                return this.getResult(process_id, message, attempt + 1);
             }
         }
     }
@@ -106,6 +108,7 @@ class AOClient {
             } else {
                 console.error(e);
                 console.log("Retrying action...");
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
                 return this.sendAction(process_id, action, data, tags, attempt + 1);
             }
         }
