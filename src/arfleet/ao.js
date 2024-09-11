@@ -66,6 +66,8 @@ class AOClient {
             } catch (e) {
                 if (failOnSignerFail) {
                     dontAttempt = true;
+                    console.error("Failed to send action", e);
+                    return false;
                 } else {
                     throw e;
                 }
@@ -133,7 +135,10 @@ class AOClient {
     }
 
     async sendToken(token, to, amount) {
-        const res = await this.sendAction(token, "Transfer", "", { Recipient: to, Quantity: amount.toString() });
+        const res = await this.sendAction(token, "Transfer", "", { Recipient: to, Quantity: amount.toString() }, /* attempt */ 0, /* failOnSignerFail */ true);
+        if (res === false) {
+            throw new Error("Signing transaction failed");
+        }
         return res;
     }
 

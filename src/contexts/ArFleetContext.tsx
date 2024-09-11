@@ -109,6 +109,7 @@ export class Placement {
     this.id = '';
     this.assignmentId = '';
     this.provider = '';
+    this.providerId = '';
     this.status = 'created';
     this.progress = 0;
     this.rsaKeyPair = null;
@@ -419,7 +420,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [devMode] = useState<boolean>(true);
 
   const [isFundingModalOpen, setIsFundingModalOpen] = useState(false);
-  const [currentFundingPlacementId, setCurrentFundingPlacementId] = useState<string | null>(null);
+  const [currentFundingPlacement, setCurrentFundingPlacement] = useState<Placement | null>(null);
+  const [currentFundingAssignment, setCurrentFundingAssignment] = useState<StorageAssignment | null>(null);
 
   const [settings, setSettings] = useLocalStorageState('arFleetSettings', {
     defaultValue: DEFAULT_SETTINGS
@@ -1006,22 +1008,25 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       assignment.fundingDealQueue.add(async () => {
         try {
           console.log(`Funding deal for placement ${placement.id}`);
-
+  
           setIsFundingModalOpen(true);
-          setCurrentFundingPlacementId(placement.id);
-
+          setCurrentFundingPlacement(placement);
+          setCurrentFundingAssignment(assignment);
+  
           await fundDeal(aoRef.current, placement);
-
+  
           setIsFundingModalOpen(false);
-          setCurrentFundingPlacementId(null);    
-
+          setCurrentFundingPlacement(null);    
+          setCurrentFundingAssignment(null);
+  
           console.log(`Deal funded for placement ${placement.id}`);
-
+  
           resolve('accepting');
         } catch (error) {
           setIsFundingModalOpen(false);
-          setCurrentFundingPlacementId(null);
-    
+          setCurrentFundingPlacement(null);
+          setCurrentFundingAssignment(null);
+  
           console.error(`Error funding deal for placement ${placement.id}:`, error);
           resolve('error');
         }
@@ -1494,6 +1499,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   return <ArFleetContext.Provider value={value}>
     {children}
-    <FundingModal isOpen={isFundingModalOpen} placementId={currentFundingPlacementId} />
+    <FundingModal isOpen={isFundingModalOpen} placement={currentFundingPlacement} assignment={currentFundingAssignment} />
   </ArFleetContext.Provider>;
 };
