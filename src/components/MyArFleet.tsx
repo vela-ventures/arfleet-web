@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { CloudUpload, FolderUp } from 'lucide-react';
 import { cn } from "@/lib/utils";
@@ -6,6 +6,8 @@ import StorageAssignmentList from './StorageAssignmentList';
 import AssignmentDetails from './AssignmentDetails';
 import FileContentViewer from './FileContentViewer';
 import { useArFleet } from '../contexts/ArFleetContext';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 interface MyArFleetProps {
   isGlobalDragActive: boolean;
@@ -32,6 +34,10 @@ async function getFilesFromDirectory(dirHandle: FileSystemDirectoryHandle): Prom
 
 export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetProps) {
   const { assignments, selectedAssignmentId, setSelectedAssignmentId, onDrop, devMode, fetchAndProcessManifest } = useArFleet();
+  const [showOnlyCompleted, setShowOnlyCompleted] = useState(() => {
+    const savedState = localStorage.getItem('showOnlyCompleted');
+    return savedState ? JSON.parse(savedState) : false;
+  });
   console.log('MyArFleet rendering', assignments.length);
 
   const { getRootProps, getInputProps, isDragActive: isLocalDragActive } = useDropzone({
@@ -63,6 +69,15 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
       console.error("Error selecting directory:", error);
     }
   };
+
+  const shouldEnableCheckbox = useMemo(() => {
+    return assignments.some(a => a.status !== 'uploading' && a.status !== 'completed');
+  }, [assignments]);
+
+  const filteredAssignments = useMemo(() => {
+    if (!showOnlyCompleted) return assignments;
+    return assignments.filter(a => a.status === 'completed' || a.status === 'uploading' || a.id === selectedAssignmentId);
+  }, [assignments, showOnlyCompleted, selectedAssignmentId]);
 
   function dragAndDropOverlay(overlayMode: boolean) {
     return (
@@ -112,7 +127,29 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
 
   return (
     <div className="flex flex-col h-full">
-      <h1 className="text-2xl font-bold p-4">My ArFleet</h1>
+      <div className="flex justify-between items-center p-4">
+        <h1 className="text-2xl font-bold">My ArFleet</h1>
+        {shouldEnableCheckbox && (
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="show-completed"
+              checked={showOnlyCompleted}
+              onCheckedChange={(checked) => {
+                const newState = checked as boolean;
+                setShowOnlyCompleted(newState);
+                localStorage.setItem('showOnlyCompleted', JSON.stringify(newState));
+              }}
+              className="text-muted-foreground"
+            />
+            <Label
+              htmlFor="show-completed"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-muted-foreground"
+            >
+              Show only completed
+            </Label>
+          </div>
+        )}
+      </div>
       <div className="flex-1 flex overflow-hidden">
         <div {...getRootProps()} className="flex-1 flex relative">
           <input {...getInputProps()} />
@@ -123,7 +160,7 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
             <>
               <div className="w-64 border-r overflow-y-auto">
                 <StorageAssignmentList
-                  assignments={assignments}
+                  assignments={filteredAssignments}
                   selectedAssignmentId={selectedAssignmentId}
                   onSelectAssignment={setSelectedAssignmentId}
                   fetchAndProcessManifest={fetchAndProcessManifest}

@@ -5,22 +5,15 @@ import { StorageAssignment } from '../types';
 import { useArFleet } from '../contexts/ArFleetContext';
 import { getProgressColorByPlacementStatus } from '@/helpers/progresscolor';
 
-export default function StorageAssignmentList() {
-  const { assignments, selectedAssignmentId, setSelectedAssignmentId, fetchAndProcessManifest, masterKey } = useArFleet();
-
-  useEffect(() => {
-    const sortedAssignments = [...assignments].sort((a, b) => b.createdAt - a.createdAt);
-    if (!selectedAssignmentId && sortedAssignments.length > 0) {
-      setSelectedAssignmentId(sortedAssignments[0].id);
-    }
-  }, [assignments, selectedAssignmentId, setSelectedAssignmentId]);
+export default function StorageAssignmentList({ assignments, selectedAssignmentId, onSelectAssignment, fetchAndProcessManifest, masterKey }) {
+  console.log('StorageAssignmentList rendering', assignments.length);
 
   const sortedAssignments = useMemo(() => {
     return [...assignments].sort((a, b) => b.createdAt - a.createdAt);
   }, [assignments]);
 
   const handleSelectAssignment = (assignment: StorageAssignment) => {
-    setSelectedAssignmentId(assignment.id);
+    onSelectAssignment(assignment.id);
     if (assignment.files.length === 0) {
       fetchAndProcessManifest(assignment, masterKey);
     }
@@ -28,7 +21,7 @@ export default function StorageAssignmentList() {
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden">
-      <h2 className="text-lg font-semibold p-4">Assignments</h2>
+      <h2 className="text-lg font-semibold p-4">Assignments ({sortedAssignments.length})</h2>
       <ul>
         {sortedAssignments.map((assignment) => (
           <li
