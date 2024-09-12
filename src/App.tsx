@@ -103,6 +103,8 @@ function App() {
 
 function Header({ theme }) {
   const { arConnected, devMode, resetAODB } = useArFleet();
+
+  console.log({arConnected, devMode})
   
   const buttonStyle = theme !== 'dark' 
     ? { accent: "rgb(220, 220, 250)", className: "!text-gray-700" }
@@ -221,24 +223,39 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   isGlobalDragActive: boolean;
 }) {
   const location = useLocation()
-  const { arConnected, passStatus, wallet, address, masterKey, ao } = useArFleet();
+  const { arConnected, passStatus, wallet, address, masterKey, ao, connectWallet } = useArFleet();
   const [warBalance, setWarBalance] = useState<number | null>(null);
   const { toast } = useToast()
 
   const BYPASS_GATING = false;
 
   useEffect(() => {
+    const checkConnection = async () => {
+      console.log("AppContent: Starting connection check");
+      const result = await connectWallet();
+      console.log("AppContent: Connection check result:", result);
+    };
+    checkConnection();
+  }, [connectWallet]);
+
+  useEffect(() => {
+    console.log("AppContent: arConnected changed:", arConnected);
+  }, [arConnected]);
+
+  useEffect(() => {
     const checkWalletAndBalance = async () => {
+      console.log("AppContent: Checking wallet and balance", { arConnected, ao, address });
       if (arConnected && ao && address) {
         try {
           if (BYPASS_GATING) {
             setWarBalance(1000);
           } else {
             const balance = await ao.getDefaultTokenBalance(address);
+            console.log("AppContent: Retrieved wAR balance:", balance);
             setWarBalance(balance);
           }
         } catch (error) {
-          console.error('Error fetching wAR balance:', error);
+          console.error('AppContent: Error fetching wAR balance:', error);
           setWarBalance(null);
         }
       } else {
@@ -274,7 +291,14 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
     setActiveLink(location.pathname)
   }, [location, setActiveLink])
 
+  console.log({arConnected, passStatus, address, BYPASS_GATING})
+
   const renderContent = () => {
+    console.log("AppContent: Rendering content", { arConnected, passStatus, warBalance });
+    if (arConnected === null) {
+      return <LoadingUI />;
+    }
+
     if (!arConnected) {
       return <NotConnectedUI theme={theme} />;
     }
@@ -483,6 +507,25 @@ function InsufficientWarBalanceUI({ balance }: { balance: number }) {
           >
             Bridge AR &rarr; wAR on AOX
           </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function LoadingUI() {
+  return (
+    <div className="flex justify-center items-center h-full bg-white dark:bg-gray-800">
+      <Card className="w-[400px] shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-center">Connecting to Wallet</CardTitle>
+          <CardDescription className="text-center">Please wait while we connect to your wallet</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center">
+          <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <p className="text-sm text-gray-600 dark:text-gray-300 text-center">
+            This may take a few moments...
+          </p>
         </CardContent>
       </Card>
     </div>

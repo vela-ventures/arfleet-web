@@ -290,8 +290,8 @@ interface ArFleetContextType {
   address: string | null;
   wallet: any | null;
   signer: DataItemSigner | null;
-  arConnected: boolean;
-  connectWallet: () => Promise<void>;
+  arConnected: boolean | null;
+  connectWallet: () => Promise<boolean>;
   fetchFromArweave: (placementId: string) => Promise<any>;
   devMode: boolean;
   resetAODB: () => Promise<void>;
@@ -409,7 +409,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const fundDealRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
   const acceptDealRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
 
-  const [arConnected, setArConnected] = useState(false);
+  const [arConnected, setArConnected] = useState<boolean | null>(null);
   const [wallet, setWallet] = useState<any | null>(null);
   const [walletSigner, setWalletSigner] = useState<WalletSigner | null>(null);
   const [signer, setSigner] = useState<DataItemSigner | null>(null);
@@ -424,7 +424,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [ao, setAo] = useState<any | null>(null);
   const aoRef = useRef<any | null>(null);
 
-  const [devMode] = useState<boolean>(true);
+  const [devMode] = useState<boolean>(false);
 
   const [isFundingModalOpen, setIsFundingModalOpen] = useState(false);
   const [currentFundingPlacement, setCurrentFundingPlacement] = useState<Placement | null>(null);
@@ -614,57 +614,54 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const connectWallet = useCallback(async () => {
+    console.log("ArFleetProvider: Starting connectWallet");
     if (globalThis.arweaveWallet) {
       const wallet_ = globalThis.arweaveWallet;
       let signer_ = createDataItemSigner(wallet_);
       setSigner(signer_);
       setWallet(wallet_);
-      console.log("wallet", wallet_);
-      console.log("signMessage", wallet_.signMessage);
       setWalletSigner(new WalletSigner(wallet_.signMessage.bind(wallet_)));
       try {
         const address_ = await wallet_.getActiveAddress();
+        console.log("ArFleetProvider: Got active address", address_);
         setAddress(address_);
 
         const pubKeyB64_ = await wallet_.getActivePublicKey();
-        console.log('pubKeyB64_', pubKeyB64_);
         if (!pubKeyB64_) throw new Error('Public key not found');
+        console.log("ArFleetProvider: Got public key");
         setPubKeyB64(pubKeyB64_);
         const pubKey_ = b64UrlToBuffer(pubKeyB64_);
         setPubKey(pubKey_);
-        // console.log('pubKey', pubKey_);
 
         const masterKey_ = await arfleetPrivateHash();
+        console.log("ArFleetProvider: Generated master key");
         setMasterKey(masterKey_);
 
+        console.log("ArFleetProvider: Setting arConnected to true");
         setArConnected(true);
+        return true;
       } catch (e) {
-        console.error("Error connecting to wallet:", e);
+        console.error("ArFleetProvider: Error connecting to wallet:", e);
         setArConnected(false);
+        return false;
       }
     } else {
+      console.log("ArFleetProvider: arweaveWallet not found, setting arConnected to false");
       setArConnected(false);
+      return false;
     }
   }, []);
 
   useEffect(() => {
-    if (!arConnected) return;
-    console.log('experiment')
+    console.log("ArFleetProvider: Initial useEffect, calling connectWallet");
+    connectWallet();
+  }, [connectWallet]);
 
-    // alert();
-
-    // if (globalThis.ranExp) return;
-    // globalThis.ranExp = true;
-    // runExp();
-    run();
-
-    // const data = "hello";
-    // const rsa = new RSAContainer()
+  useEffect(() => {
+    console.log("ArFleetProvider: arConnected changed:", arConnected);
   }, [arConnected]);
 
   useEffect(() => {
-    connectWallet();
-
     globalThis.prevConnected = null;
     const interval = setInterval(async () => {
       const wallet_ = globalThis.arweaveWallet;
@@ -686,7 +683,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [connectWallet]);
+  }, []);
 
   const updatePlacementStatus = useCallback((placementId: string, status: Placement['status']) => {
     setAssignmentsState(prevState => {
