@@ -867,8 +867,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let uploadedChunks = 0;
 
     const placementBlob = placement.placementBlob;
-    console.log('placement', placement)
-    console.log('placementBlob', placementBlob)
     const placementBlobLength = await placementBlob.getByteLength();
     const chunkCount = await placementBlob.getChunkCount();
 
@@ -877,67 +875,69 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placement.chunks = {};
     }
 
-    const waitForSlowPlacements = () => {
-      return new Promise<void>((resolve) => {
-        const checkAndWait = () => {
-          const slowestPlacement = assignment.placements.reduce((slowest, current) => {
-            const slowestChunks = slowest.chunks ? Object.keys(slowest.chunks).length : 0;
-            const currentChunks = current.chunks ? Object.keys(current.chunks).length : 0;
-            return currentChunks < slowestChunks ? current : slowest;
-          });
+    const chunkBuffer: { chunk: Uint8Array; index: number }[] = [];
+    const BUFFER_SIZE = 50; // Adjust as needed
+    const UPLOAD_BATCH_SIZE = 5; // Adjust as needed
 
-          const slowestChunkCount = slowestPlacement.chunks ? Object.keys(slowestPlacement.chunks).length : 0;
-          if (uploadedChunks - slowestChunkCount < MAX_CHUNK_DIFFERENCE) {
-            resolve();
-          } else {
-            setTimeout(checkAndWait, CHECK_INTERVAL);
-          }
-        };
-
-        checkAndWait();
-      });
-    };
-
-    console.log(`Uploading chunks for placement ${placement.id}`);
-    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
-      // Wait if this placement is too far ahead
-      await waitForSlowPlacements();
-
+    const processChunk = async (chunkIndex: number) => {
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, placementBlobLength);
       const chunk = await placementBlob.slice(start, end);
-      
-      try {
-        const chunkHashHex = await uploadChunk(placement, chunk, chunkIndex);
-        uploadedChunks++;
-        updatePlacementProgress(placement.id, (uploadedChunks / chunkCount) * 100, chunkIndex, chunkHashHex);
-        
-        // Store the chunk hash in the placement.chunks object
-        placement.chunks[chunkIndex] = chunkHashHex;
-        
-        console.log(`Uploaded chunk ${chunkIndex + 1}/${chunkCount} for placement ${placement.id}`);
+      chunkBuffer.push({ chunk, index: chunkIndex });
+    };
 
-        // Small delay to allow other placements to progress
-        await new Promise(resolve => setTimeout(resolve, 10));
-      } catch (error) {
-        console.error(`Error uploading chunk ${chunkIndex} for placement ${placement.id}:`, error);
-        return 'error';
+    const uploadChunkBatch = async (batch: { chunk: Uint8Array; index: number }[]) => {
+      const uploadPromises = batch.map(async ({ chunk, index }) => {
+        try {
+          const chunkHashHex = await uploadChunk(placement, chunk, index);
+          uploadedChunks++;
+          updatePlacementProgress(placement.id, (uploadedChunks / chunkCount) * 100, index, chunkHashHex);
+          placement.chunks[index] = chunkHashHex;
+          console.log(`Uploaded chunk ${index + 1}/${chunkCount} for placement ${placement.id}`);
+        } catch (error) {
+          console.error(`Error uploading chunk ${index} for placement ${placement.id}:`, error);
+          throw error;
+        }
+      });
+
+      await Promise.all(uploadPromises);
+    };
+
+    const processingPromise = (async () => {
+      for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+        await processChunk(chunkIndex);
+
+        if (chunkBuffer.length >= BUFFER_SIZE) {
+          const batch = chunkBuffer.splice(0, UPLOAD_BATCH_SIZE);
+          await uploadChunkBatch(batch);
+        }
       }
+    })();
+
+    const uploadingPromise = (async () => {
+      while (uploadedChunks < chunkCount) {
+        if (chunkBuffer.length >= UPLOAD_BATCH_SIZE) {
+          const batch = chunkBuffer.splice(0, UPLOAD_BATCH_SIZE);
+          await uploadChunkBatch(batch);
+        }
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to prevent tight loop
+      }
+    })();
+
+    await Promise.all([processingPromise, uploadingPromise]);
+
+    // Upload any remaining chunks in the buffer
+    if (chunkBuffer.length > 0) {
+      await uploadChunkBatch(chunkBuffer);
     }
 
     // post-transfer
     const encryptedManifestArp = await assignment.folder!.encryptedManifestDataItem!.arp.chunkHashes[0];
     console.log('encryptedManifestArp', encryptedManifestArp);
 
-    // Create a new assignment object with the updated property
-    const updatedAssignment = new StorageAssignment({
-      ...assignment,
-      encryptedManifestArp
-    });
-
     // Update the assignments state with the new assignment object
     setAssignmentsState(prev => prev.map(a => 
-      a.id === updatedAssignment.id ? updatedAssignment : a
+      a.id === assignment.id ? { ...a, encryptedManifestArp } : a
     ));
 
     console.log(`All chunks uploaded for placement ${placement.id}`);

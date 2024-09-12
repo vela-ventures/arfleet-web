@@ -1,11 +1,12 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { format } from 'date-fns';
+import { format, formatDistance, differenceInSeconds } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
 import { useArFleet } from '../contexts/ArFleetContext';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2 } from 'lucide-react';
 import { ExternalLink } from 'lucide-react';
 import { getProgressColorByPlacementStatus } from '@/helpers/progresscolor';
+import { cn } from "@/lib/utils"; // Make sure you have this utility function
 
 // Add this CSS class somewhere in your global styles or in a <style> tag in your component
 const styles = `
@@ -42,6 +43,28 @@ export default function AssignmentDetails({ assignments, selectedAssignmentId })
   const getProgressColor = (progress: number) => {
     return progress === 100 ? "bg-green-500" : "bg-yellow-500";
   };
+
+  const totalProgress = assignment.placements.reduce((sum, placement) => sum + placement.progress, 0) / assignment.placements.length;
+
+  const formatTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const elapsedSeconds = differenceInSeconds(new Date(), new Date(assignment.createdAt));
+  const elapsedTime = formatTime(elapsedSeconds);
+
+  const estimateETA = () => {
+    if (totalProgress === 0) return '00:00:00';
+    if (totalProgress === 100) return elapsedTime;
+    const estimatedTotalSeconds = elapsedSeconds / (totalProgress / 100);
+    const remainingSeconds = Math.max(0, Math.round(estimatedTotalSeconds - elapsedSeconds));
+    return formatTime(remainingSeconds);
+  };
+
+  const eta = estimateETA();
 
   return (
     <div className="overflow-y-auto overflow-x-hidden">
@@ -98,16 +121,32 @@ export default function AssignmentDetails({ assignments, selectedAssignmentId })
             <tr>
               <td className="font-medium text-gray-500 dark:text-gray-400 pr-4 py-2">Progress:</td>
               <td className="p-1">
-                <div className="flex rounded-full overflow-hidden">
-                  {assignment.placements.map((placement, index) => (
-                    <Progress 
-                      key={placement.id}
-                      value={placement.progress} 
-                      className={`h-2 flex-grow rounded-none ${index === 0 ? '' : ''} ${index === assignment.placements.length - 1 ? '' : ''}`}
-                      indicatorClassName={getProgressColorByPlacementStatus(placement.status, assignment.status)}
-                    />
-                  ))}
+                <div className="flex items-center">
+                  <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex-grow mr-4">
+                    {assignment.placements.map((placement, index) => {
+                      const width = (placement.progress / 100) * (100 / assignment.placements.length);
+                      return (
+                        <div
+                          key={placement.id}
+                          className={cn(
+                            "h-full float-left",
+                            getProgressColorByPlacementStatus(placement.status, assignment.status)
+                          )}
+                          style={{ width: `${width}%` }}
+                          title={`${placement.provider}: ${placement.progress}%`}
+                        />
+                      );
+                    })}
+                  </div>
+                  {assignment.status === "uploading" && (
+                    <div className="ml-4 text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                      {elapsedTime}/{eta} ({Math.round(totalProgress)}%)
+                    </div>
+                  )}
                 </div>
+                {/* <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+                  {totalProgress.toFixed(1)}% complete
+                </div> */}
               </td>
             </tr>
           </tbody>
