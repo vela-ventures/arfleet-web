@@ -225,7 +225,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   const [warBalance, setWarBalance] = useState<number | null>(null);
   const { toast } = useToast()
 
-  const BYPASS_GATING = true;
+  const BYPASS_GATING = false;
 
   useEffect(() => {
     const checkWalletAndBalance = async () => {
