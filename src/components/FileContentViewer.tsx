@@ -57,6 +57,15 @@ export default function FileContentViewer() {
   const [isImmortalizing, setIsImmortalizing] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ id: string; url: string } | null>(null);
 
+  const pickPlacement = (assignment: StorageAssignment) => {
+    const filterOnlyCompleted = assignment.placements.filter((p: Placement) => p.status === 'completed');
+    if (filterOnlyCompleted.length > 0) {
+      return filterOnlyCompleted[0];
+    } else {
+      return assignment.placements[0];
+    }
+  };
+
   useEffect(() => {
     if (assignment) {
       setIsLoading(assignment.files.length === 0);
@@ -67,7 +76,8 @@ export default function FileContentViewer() {
     if (isShareDialogOpen && shareItem && masterKey) {
       const getShareUrl = async () => {
         try {
-          const url = await deriveShareUrl(shareItem, assignment!.placements[0], masterKey);
+          const placement = pickPlacement(assignment);
+          const url = await deriveShareUrl(shareItem, placement, masterKey);
           setShareUrl(url);
         } catch (error) {
           console.error('Error generating share URL:', error);
@@ -211,7 +221,7 @@ export default function FileContentViewer() {
 
       let dataItemContents: Uint8Array;
 
-      const arpReader = new ArpReader(immortalizeItem?.file?.arpId, assignment.placements[0]);
+      const arpReader = new ArpReader(immortalizeItem?.file?.arpId, pickPlacement(assignment));
       await arpReader.init();
   
       if (dataItemType === 'encrypted') {
@@ -373,7 +383,7 @@ export default function FileContentViewer() {
               {item.name}
             </span>
           </div>
-          {item.type === 'file' && item.file?.arpId && (
+          {item.type === 'file' && item.file?.arpId && isPlacementCompleted() && (
             <div className="flex flex-wrap gap-2 items-center justify-end invisible group-hover:visible">
               <Button
                 size="sm"
@@ -417,6 +427,11 @@ export default function FileContentViewer() {
     ));
   };
 
+  const isPlacementCompleted = () => {
+    const placement = pickPlacement(assignment);
+    return placement.status === 'completed';
+  };
+
   const fileTree = buildFileTree(assignment.files);
 
   const downloadFile = async (file: FileMetadata) => {
@@ -424,7 +439,7 @@ export default function FileContentViewer() {
     setDownloadingFilePath(file.path);
     setIsDownloading(true);
     try {
-      const placement = assignment.placements[0]; // Assuming we're using the first placement
+      const placement = pickPlacement(assignment);
       
       if (!masterKey) {
         console.error('Master key is not set');
