@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
 import { StorageAssignment } from '../types';
@@ -7,10 +7,7 @@ import { getProgressColorByPlacementStatus } from '@/helpers/progresscolor';
 
 export default function StorageAssignmentList({ assignments, selectedAssignmentId, onSelectAssignment, fetchAndProcessManifest, masterKey }) {
   console.log('StorageAssignmentList rendering', assignments.length);
-
-  const sortedAssignments = useMemo(() => {
-    return [...assignments].sort((a, b) => b.createdAt - a.createdAt);
-  }, [assignments]);
+  console.log('selectedAssignmentId', selectedAssignmentId);
 
   const handleSelectAssignment = (assignment: StorageAssignment) => {
     onSelectAssignment(assignment.id);
@@ -19,11 +16,20 @@ export default function StorageAssignmentList({ assignments, selectedAssignmentI
     }
   };
 
+  useEffect(() => {
+    if (selectedAssignmentId) {
+      const selectedAssignment = assignments.find(a => a.id === selectedAssignmentId);
+      if (selectedAssignment && selectedAssignment.files.length === 0) {
+        fetchAndProcessManifest(selectedAssignment, masterKey);
+      }
+    }
+  }, [selectedAssignmentId, assignments, fetchAndProcessManifest, masterKey]);
+
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden">
-      <h2 className="text-lg font-semibold p-4">Assignments ({sortedAssignments.length})</h2>
+      <h2 className="text-lg font-semibold p-4">Assignments ({assignments.length})</h2>
       <ul>
-        {sortedAssignments.map((assignment) => (
+        {assignments.map((assignment) => (
           <li
             key={assignment.id}
             className={cn(

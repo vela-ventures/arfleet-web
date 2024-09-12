@@ -20,17 +20,13 @@ const styles = `
   }
 `;
 
-export default function AssignmentDetails() {
-  const { assignments, selectedAssignmentId, fetchAndProcessManifest, masterKey } = useArFleet();
+export default function AssignmentDetails({ assignments, selectedAssignmentId }) {
+  const { fetchAndProcessManifest, masterKey } = useArFleet();
   const [isLoading, setIsLoading] = useState(false);
 
-  const sortedAssignments = useMemo(() => {
-    return [...assignments].sort((a, b) => b.createdAt - a.createdAt);
-  }, [assignments]);
-
   const assignment = useMemo(() => {
-    return sortedAssignments.find(a => a.id === selectedAssignmentId) || sortedAssignments[0];
-  }, [sortedAssignments, selectedAssignmentId]);
+    return assignments.find(a => a.id === selectedAssignmentId);
+  }, [assignments, selectedAssignmentId]);
 
   useEffect(() => {
     if (assignment && assignment.files.length === 0) {
@@ -121,7 +117,7 @@ export default function AssignmentDetails() {
         <div className="space-y-2">
           {assignment.placements.map((placement) => (
             <div key={placement.id} className="bg-gray-100 dark:bg-gray-700 p-2 rounded-md">
-              <div className="flex items-center mb-1">
+              <div className="flex items-center">
                 <span className="font-medium mr-2 flex-grow text-gray-800 dark:text-gray-200 truncate" title={placement.provider}>
                   {placement.provider}
                 </span>
@@ -138,7 +134,7 @@ export default function AssignmentDetails() {
               </div>
               {placement.processId && (
                 <>
-                  <hr className="my-2 border-gray-200 dark:border-gray-600" />
+                  <hr className="mt-1 my-2 border-gray-200 dark:border-gray-600" />
                   <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center">
                     <span className="mr-1">Process ID:</span>
                     <a

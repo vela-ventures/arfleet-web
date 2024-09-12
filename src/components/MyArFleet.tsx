@@ -74,10 +74,21 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
     return assignments.some(a => a.status !== 'uploading' && a.status !== 'completed');
   }, [assignments]);
 
+  const sortedAssignments = useMemo(() => {
+    return [...assignments].sort((a, b) => b.createdAt - a.createdAt);
+  }, [assignments]);
+
   const filteredAssignments = useMemo(() => {
-    if (!showOnlyCompleted) return assignments;
-    return assignments.filter(a => a.status === 'completed' || a.status === 'uploading' || a.id === selectedAssignmentId);
-  }, [assignments, showOnlyCompleted, selectedAssignmentId]);
+    if (!showOnlyCompleted) return sortedAssignments;
+    return sortedAssignments.filter(a => a.status === 'completed' || a.status === 'uploading' || a.id === selectedAssignmentId);
+  }, [sortedAssignments, showOnlyCompleted, selectedAssignmentId]);
+
+  useEffect(() => {
+    // Set the first assignment as selected if none is selected and assignments exist
+    if (!selectedAssignmentId && filteredAssignments.length > 0) {
+      setSelectedAssignmentId(filteredAssignments[0].id);
+    }
+  }, [filteredAssignments, selectedAssignmentId, setSelectedAssignmentId]);
 
   function dragAndDropOverlay(overlayMode: boolean) {
     return (
@@ -168,7 +179,10 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
                 />
               </div>
               <div className="flex-1 overflow-y-auto">
-                <AssignmentDetails />
+                <AssignmentDetails
+                  assignments={filteredAssignments}
+                  selectedAssignmentId={selectedAssignmentId}
+                />
                 <FileContentViewer />
               </div>
             </>

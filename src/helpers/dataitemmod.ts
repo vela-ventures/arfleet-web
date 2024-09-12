@@ -200,6 +200,7 @@ export class DataItem extends Sliceable {
       const _tags = (this.tags?.length ?? 0) > 0 ? serializeTags(this.tags) : null;
       const tags_length = 16 + (_tags ? _tags.byteLength : 0);
 
+      if (!this.owner) throw new Error("Owner is not set");
       const _owner = b64UrlToBuffer(this.owner);
       const owner_length = _owner.byteLength;
 

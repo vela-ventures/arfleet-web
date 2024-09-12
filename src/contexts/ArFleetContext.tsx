@@ -195,7 +195,7 @@ export class StorageAssignment {
   id: string;
   files: FileMetadata[];
   rawFiles: File[];
-  status: 'created' | 'chunking' | 'uploading' | 'completed' | 'error';
+  status: 'created' | 'chunking' | 'uploading' | 'completed' | 'error' | 'interrupted';
   placements: Placement[];
   progress: number;
   dataItemFactory: DataItemFactory | null;
@@ -537,7 +537,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       } else if (Array.isArray(allAssignmentIds)) {
         parsedAssignmentIds = allAssignmentIds;
       } else {
-        console.error('Invalid allAssignments data:', allAssignmentIds);
+        console.log('Invalid allAssignments data:', allAssignmentIds, 'Setting to empty array');
         parsedAssignmentIds = [];
       }
 
@@ -560,7 +560,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const assignment = StorageAssignment.unserialize(parsedAssignmentData);
             
             // Change status from 'uploading' to 'interrupted'
-            if (assignment.status === 'uploading') {
+            if (assignment.status === 'uploading' || assignment.status === 'created' || assignment.status === 'chunking') {
               assignment.status = 'interrupted';
             }
 
@@ -586,6 +586,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         const validAssignments = loadedAssignments.filter(Boolean) as StorageAssignment[];
         setAssignmentsState(validAssignments);
+
+        // // Add this block to set the initial selectedAssignmentId
+        // if (validAssignments.length > 0 && !selectedAssignmentId) {
+        //   setSelectedAssignmentId(validAssignments[0].id);
+        // }
 
         // Update the modified assignments in AODB
         validAssignments.forEach(assignment => {
@@ -615,6 +620,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setAddress(address_);
 
         const pubKeyB64_ = await wallet_.getActivePublicKey();
+        console.log('pubKeyB64_', pubKeyB64_);
+        if (!pubKeyB64_) throw new Error('Public key not found');
         setPubKeyB64(pubKeyB64_);
         const pubKey_ = b64UrlToBuffer(pubKeyB64_);
         setPubKey(pubKey_);
@@ -1064,93 +1071,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placementId: placement.id,
       chunks: placement.chunks || {},
     };
-    // console.log('CHUNKS:', metadata.chunks, {placementId: placement.id, assignmentId: assignment.id});
-    // console.log('FOLDER:', assignment.folder);
-    // console.log('FILES:', assignment.folder!.files);
-    // console.log('ENCRYPTED MANIFEST DATA ITEM:', assignment.folder!.encryptedManifestDataItem);
-
-    // const file0 = assignment.folder!.files[0];
-    // const file0EncryptedDataItem = file0.encryptedDataItem;
-    // console.log("file0EncryptedDataItem", file0EncryptedDataItem);
-    // console.log("file0EncryptedDataItem slice", await file0EncryptedDataItem!.getByteLength(), bufferToHex(await file0EncryptedDataItem!.slice(0, await file0EncryptedDataItem!.getByteLength())));
-    // const folder = assignment.folder!;
-    // console.log("folder", folder);
-    // console.log("folder.slice", await folder.getByteLength(), bufferToHex(await folder.slice(0, await folder.getByteLength())));
-    // let cs = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE;
-    // for (let i = 0; i < Math.ceil(await folder.getByteLength() / cs); i++) {
-    //   const chunk = await folder.slice(i * cs, i * cs + cs);
-    //   console.log("pchunk", i, chunk.byteLength, bufferToHex(await chunk.slice(0, chunk.byteLength)));
-    // }
-    // cs = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE - 10;
-    // for (let i = 0; i < Math.ceil(await folder.getByteLength() / cs); i++) {
-    //   const chunk = await folder.slice(i * cs, i * cs + cs);
-    //   console.log("pchunk", i, chunk.byteLength, bufferToHex(await chunk.slice(0, chunk.byteLength)));
-    // }
-    // cs = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE * 3;
-    // for (let i = 0; i < Math.ceil(await folder.getByteLength() / cs); i++) {
-    //   const chunk = await folder.slice(i * cs, i * cs + cs);
-    //   console.log("pchunk", i, chunk.byteLength, bufferToHex(await chunk.slice(0, chunk.byteLength)));
-    // }
-
-    // const finalIndexHash = assignment.folder!.encryptedManifestDataItem!.arp!.chunkHashes[0];
-    // // Update the assignment with the finalIndexHash as arpId
-    // const updatedAssignment = new StorageAssignment({
-    //   ...assignment,
-    //   arpId: finalIndexHash
-    // });
-    // console.log('FINAL INDEX HASH:', finalIndexHash);
-    
-    // downloadUint8ArrayAsFile(await assignment.folder!.encryptedManifestDataItem!.getRawBinary(), "header.bin");
-    
-    // const filesAndChunks = [];
-    // for (let [idx, [file, inFileChunkIdx]] of assignment.folder!.chunkIdxToFile) {
-    //   filesAndChunks.push({file, chunk: idx, inFileChunkIdx, hash: metadata.chunks[idx]});
-    // }
-    // const filesAndChunksGroupByFile = filesAndChunks.reduce<Record<string, {
-    //   file: FileMetadata,
-    //   chunks: Array<{chunk: number, inFileChunkIdx: number, hash: string}>
-    // }>>((acc, {file, chunk, inFileChunkIdx, hash}) => {
-    //   if (!acc[file.path]) {
-    //     acc[file.path] = { file, chunks: [] };
-    //   }
-    //   acc[file.path].chunks.push({chunk, inFileChunkIdx, hash});
-    //   return acc;
-    // }, {});
-  
-    // console.log('filesAndChunksGroupByFile', filesAndChunksGroupByFile);
-    // // Update the assignment with the new file metadata
-    // setAssignmentsState(prev => prev.map(a => {
-    //   if (a.id === assignment.id) {
-    //     console.log('finalIndexHash', finalIndexHash);
-    //     return {
-    //       ...a,
-    //       files: a.files.map(f => {
-    //         const updatedFile = filesAndChunksGroupByFile[f.path]?.file;
-    //         return updatedFile || f;
-    //       }),
-    //       arpId: finalIndexHash
-    //     };
-    //   }
-    //   return a;
-    // }));
-
-    // const response = await fetch(`${placement.provider}/verify`, {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     'X-Placement-Id': placement.id,
-
-    //     'Arfleet-Address': address,
-    //     'Arfleet-Signature': 'signature' // todo: p4
-    //   },
-    //   body: JSON.stringify(metadata),
-    // });
-
-    // if (!response.ok) {
-    //   throw new Error(`HTTP error! status: ${response.status}`);
-    // }
-
-    // const result = await response.json();
 
     const rsaKP = placement.rsaContainer!.rsaKeyPair;
     const publicKey = rsaKP.publicKey;
@@ -1252,8 +1172,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     console.log('creating folder');
     const folder = await createFolder(updatedFiles, assignment.dataItemFactory!, walletSigner, masterKey);
 
-    const tmpId: string = (new Date()).getTime().toString();
-    const assignmentHash = await sha256hex(new TextEncoder().encode(tmpId));
     const placements = await Promise.all(settings.providers.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
 
@@ -1264,8 +1182,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const placementBlob = new PlacementBlob(rsaContainer);
 
       return new Placement({
-        id: await sha256hex(`${assignmentHash}-${provider}-${Date.now()}`),
-        assignmentId: assignmentHash,
+        id: await sha256hex(`${assignment.id}-${provider}-${Date.now()}`),
+        assignmentId: assignment.id,
         assignment: assignment,
         provider,
         status: 'created' as const,
@@ -1284,7 +1202,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const assignmentToUpdate = draft.find(a => a.id === assignment.id);
       if (assignmentToUpdate) {
         assignmentToUpdate.files = updatedFiles;
-        assignmentToUpdate.id = assignmentHash;
+        assignmentToUpdate.id = assignment.id;
         assignmentToUpdate.folder = folder;
         assignmentToUpdate.status = 'uploading';
         assignmentToUpdate.placements = placements;
@@ -1313,9 +1231,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }; // end processAssignment
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const assignmentId = bufferTob64Url(await sha256(stringToBuffer(Date.now().toString())));
+    const assignmentId = await sha256hex(await sha256hex(stringToBuffer(Date.now().toString() + Math.random().toString() + address)));
   
     if (!walletSigner) throw new Error('Wallet signer not found');
+
+    if (!pubKeyB64) throw new Error('Public key not found');
   
     // Create new assignment
     const newAssignment = new StorageAssignment({
@@ -1346,26 +1266,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       aodb?.set(`assignment:${newAssignment.id}`, newAssignment.serialize());
       const allAssignmentIds = updatedAssignments.map(a => a.id);
       aodb?.set('allAssignments', allAssignmentIds);
+
+      // Immediately select the new assignment
+      setSelectedAssignmentId(newAssignment.id);
+
       return updatedAssignments;
     });
-  
+
     setAssignmentQueue(prev => [...prev, newAssignment.id]);
-    
-    // Immediately select the new assignment
-    setSelectedAssignmentId(newAssignment.id);
-  
-    // Update the selection after a short delay
-    setTimeout(() => {
-      setAssignmentsState(prev => {
-        const updatedAssignment = prev.find(a => a.id === newAssignment.id || a.files.some(f => f.name === newAssignment.files[0].name));
-        if (updatedAssignment) {
-          setSelectedAssignmentId(updatedAssignment.id);
-        }
-        return prev;
-      });
-    }, 500); // Adjust this delay as needed
-  
-  }, [aodb, pubKeyB64, walletSigner, address, setSelectedAssignmentId]);
+  }, [walletSigner, aodb, setSelectedAssignmentId, setAssignmentQueue, pubKeyB64, address]);
   
   useEffect(() => {
     const processNextAssignment = async () => {
@@ -1463,7 +1372,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
           return a;
         });
-        console.log('Updated assignments', updatedAssignments);
+        // console.log('Updated assignments', updatedAssignments);
         return updatedAssignments;
       });
 
