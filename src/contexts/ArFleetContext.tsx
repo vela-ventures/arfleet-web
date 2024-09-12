@@ -410,6 +410,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const acceptDealRef = useRef<(placement: Placement, assignment: StorageAssignment) => Promise<Placement['status']>>();
 
   const [arConnected, setArConnected] = useState<boolean | null>(null);
+  const [devMode, setDevMode] = useState(false);
   const [wallet, setWallet] = useState<any | null>(null);
   const [walletSigner, setWalletSigner] = useState<WalletSigner | null>(null);
   const [signer, setSigner] = useState<DataItemSigner | null>(null);
@@ -423,8 +424,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [passStatus, setPassStatus] = useState<'started' | 'checking' | 'ok' | 'notfound' | 'error'>('started');
   const [ao, setAo] = useState<any | null>(null);
   const aoRef = useRef<any | null>(null);
-
-  const [devMode] = useState<boolean>(false);
 
   const [isFundingModalOpen, setIsFundingModalOpen] = useState(false);
   const [currentFundingPlacement, setCurrentFundingPlacement] = useState<Placement | null>(null);
@@ -441,6 +440,13 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const resetSettingsToDefault = () => {
     setSettings(DEFAULT_SETTINGS);
   };
+
+  useEffect(() => {
+    console.log("ArFleetProvider: Initial mount");
+    const storedDevMode = localStorage.getItem('devMode');
+    console.log("ArFleetProvider: Stored devMode:", storedDevMode);
+    setDevMode(storedDevMode === 'true');
+  }, []);
 
   useEffect(() => {
     if (wallet && !ao) {
@@ -613,13 +619,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     initAODB();
   }, []);
 
-  const connectWallet = useCallback(async () => {
-    console.log("ArFleetProvider: Starting connectWallet");
+  const connectWallet = useCallback(async (retries: number = 40) => {
+    console.log("ArFleetProvider: connectWallet called");
     if (globalThis.arweaveWallet) {
       const wallet_ = globalThis.arweaveWallet;
       let signer_ = createDataItemSigner(wallet_);
       setSigner(signer_);
       setWallet(wallet_);
+      console.log("wallet", wallet_);
+      console.log("signMessage", wallet_.signMessage);
       setWalletSigner(new WalletSigner(wallet_.signMessage.bind(wallet_)));
       try {
         const address_ = await wallet_.getActiveAddress();
@@ -627,17 +635,18 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setAddress(address_);
 
         const pubKeyB64_ = await wallet_.getActivePublicKey();
+        console.log('pubKeyB64_', pubKeyB64_);
         if (!pubKeyB64_) throw new Error('Public key not found');
-        console.log("ArFleetProvider: Got public key");
         setPubKeyB64(pubKeyB64_);
         const pubKey_ = b64UrlToBuffer(pubKeyB64_);
         setPubKey(pubKey_);
+        // console.log('pubKey', pubKey_);
 
         const masterKey_ = await arfleetPrivateHash();
         console.log("ArFleetProvider: Generated master key");
         setMasterKey(masterKey_);
 
-        console.log("ArFleetProvider: Setting arConnected to true");
+        console.log("ArFleetProvider: Wallet connected successfully");
         setArConnected(true);
         return true;
       } catch (e) {
@@ -646,20 +655,30 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return false;
       }
     } else {
-      console.log("ArFleetProvider: arweaveWallet not found, setting arConnected to false");
-      setArConnected(false);
-      return false;
+      if (retries > 0) {
+        console.log(`ArFleetProvider: arweaveWallet not found, retrying... (${retries} attempts left)`);
+        await new Promise(resolve => setTimeout(resolve, 1000 / 2));
+        return connectWallet(retries - 1);
+      } else {
+        console.log("ArFleetProvider: arweaveWallet not found after retries");
+        setArConnected(false);
+        return false;
+      }  
     }
   }, []);
+
+  useEffect(() => {
+    console.log("ArFleetProvider: arConnected changed:", arConnected);
+  }, [arConnected]);
+
+  useEffect(() => {
+    console.log("ArFleetProvider: devMode changed:", devMode);
+  }, [devMode]);
 
   useEffect(() => {
     console.log("ArFleetProvider: Initial useEffect, calling connectWallet");
     connectWallet();
   }, [connectWallet]);
-
-  useEffect(() => {
-    console.log("ArFleetProvider: arConnected changed:", arConnected);
-  }, [arConnected]);
 
   useEffect(() => {
     globalThis.prevConnected = null;

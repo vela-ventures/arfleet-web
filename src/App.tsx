@@ -223,7 +223,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   isGlobalDragActive: boolean;
 }) {
   const location = useLocation()
-  const { arConnected, passStatus, wallet, address, masterKey, ao, connectWallet } = useArFleet();
+  const { arConnected, passStatus, wallet, address, masterKey, ao, connectWallet, devMode } = useArFleet();
   const [warBalance, setWarBalance] = useState<number | null>(null);
   const { toast } = useToast()
 
@@ -243,8 +243,12 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   }, [arConnected]);
 
   useEffect(() => {
+    console.log("AppContent: devMode changed:", devMode);
+  }, [devMode]);
+
+  useEffect(() => {
     const checkWalletAndBalance = async () => {
-      console.log("AppContent: Checking wallet and balance", { arConnected, ao, address });
+      console.log("AppContent: Checking wallet and balance", { arConnected, ao, address, devMode });
       if (arConnected && ao && address) {
         try {
           if (BYPASS_GATING) {
@@ -264,7 +268,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
     };
 
     checkWalletAndBalance();
-  }, [arConnected, ao, address, BYPASS_GATING]);
+  }, [arConnected, ao, address, BYPASS_GATING, devMode]);
 
   useEffect(() => {
     if (warBalance !== null && warBalance < 0.0001) {
@@ -294,7 +298,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   console.log({arConnected, passStatus, address, BYPASS_GATING})
 
   const renderContent = () => {
-    console.log("AppContent: Rendering content", { arConnected, passStatus, warBalance });
+    console.log("AppContent: Rendering content", { arConnected, passStatus, warBalance, devMode });
     if (arConnected === null) {
       return <LoadingUI />;
     }
