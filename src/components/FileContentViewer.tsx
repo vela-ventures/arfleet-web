@@ -29,6 +29,7 @@ import { ARFLEET_VERSION } from '@/helpers/version';
 import mime from 'mime';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 interface FileTreeItem {
   type: 'file' | 'folder';
@@ -56,6 +57,7 @@ export default function FileContentViewer() {
   const [immortalizeType, setImmortalizeType] = useState<'encrypted' | 'decrypted'>('encrypted');
   const [isImmortalizing, setIsImmortalizing] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ id: string; url: string } | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const pickPlacement = (assignment: StorageAssignment) => {
     const filterOnlyCompleted = assignment.placements.filter((p: Placement) => p.status === 'completed');
@@ -438,6 +440,7 @@ export default function FileContentViewer() {
     console.log('Downloading file:', file);
     setDownloadingFilePath(file.path);
     setIsDownloading(true);
+    setDownloadError(null);
     try {
       const placement = pickPlacement(assignment);
       
@@ -491,7 +494,7 @@ export default function FileContentViewer() {
       setDownloadingFilePath(null);
     } catch (error) {
       console.error('Error downloading file:', error);
-      // You might want to show an error message to the user here
+      setDownloadError("An error occurred while downloading the file. If you recently uploaded this file, please wait a few minutes and try again, as the provider may still be decrypting RSA chunks.");
     } finally {
       setIsDownloading(false);
     }
@@ -676,6 +679,15 @@ export default function FileContentViewer() {
           )}
         </DialogContent>
       </Dialog>
+      <AlertDialog open={!!downloadError} onOpenChange={() => setDownloadError(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Download Error</AlertDialogTitle>
+            <AlertDialogDescription>{downloadError}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogAction>OK</AlertDialogAction>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
