@@ -494,7 +494,8 @@ export default function FileContentViewer() {
       setDownloadingFilePath(null);
     } catch (error) {
       console.error('Error downloading file:', error);
-      setDownloadError("An error occurred while downloading the file. If you recently uploaded this file, please wait a few minutes and try again, as the provider may still be decrypting RSA chunks.");
+      setDownloadError("We couldn't download the file. If the placement just finished, please wait a few minutes and try again, as the provider may still be decrypting RSA chunks.");
+      setIsDownloading(false);
     } finally {
       setIsDownloading(false);
     }
