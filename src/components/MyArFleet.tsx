@@ -8,6 +8,7 @@ import FileContentViewer from './FileContentViewer';
 import { useArFleet } from '../contexts/ArFleetContext';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import FloatingUploadButton from './FloatingUploadButton';
 
 interface MyArFleetProps {
   isGlobalDragActive: boolean;
@@ -190,6 +191,9 @@ export default function MyArFleet({ isGlobalDragActive, masterKey }: MyArFleetPr
           {isDragActive && dragAndDropOverlay(true)}
         </div>
       </div>
+
+      <FloatingUploadButton onFileSelect={handleFileSelect} onDirSelect={handleDirSelect} />
+      
     </div>
   );
 }
