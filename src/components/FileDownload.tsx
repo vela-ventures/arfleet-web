@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { DownloadIcon, FileIcon, Code } from 'lucide-react';
@@ -12,13 +12,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+enum DownloadState {
+  Idle,
+  Decrypting,
+  Downloading,
+}
+
 export default function FileDownload() {
   const { arpId, key, name, provider } = useParams<{ arpId: string, key: string, name: string, provider: string }>();
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadState, setDownloadState] = useState<DownloadState>(DownloadState.Idle);
   const [error, setError] = useState<string | null>(null);
 
   const downloadFile = async () => {
-    setIsDownloading(true);
+    setDownloadState(DownloadState.Decrypting);
     setError(null);
     try {
       const placement: Placement = new Placement({ provider: decodeURIComponent(provider!) });
@@ -39,6 +45,7 @@ export default function FileDownload() {
       
       const fileData = await decryptedDataItemReader.slice(0, decryptedDataItemReader.dataLength);
       
+      setDownloadState(DownloadState.Downloading);
       const blob = new Blob([fileData], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
 
@@ -50,12 +57,10 @@ export default function FileDownload() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      setIsDownloading(false);
-      throw error;
       console.error('Error downloading file:', error);
       setError('An error occurred while downloading the file. Please try again.');
     } finally {
-      setIsDownloading(false);
+      setDownloadState(DownloadState.Idle);
     }
   };
 
@@ -97,10 +102,15 @@ export default function FileDownload() {
             </div>
             <Button
               onClick={downloadFile}
-              disabled={isDownloading}
+              disabled={downloadState !== DownloadState.Idle}
               className="w-full"
             >
-              {isDownloading ? (
+              {downloadState === DownloadState.Decrypting ? (
+                <>
+                  <Skeleton className="h-5 w-5 mr-2" />
+                  Decrypting...
+                </>
+              ) : downloadState === DownloadState.Downloading ? (
                 <>
                   <Skeleton className="h-5 w-5 mr-2" />
                   Downloading...
