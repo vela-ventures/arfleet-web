@@ -225,12 +225,18 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
   const [warBalance, setWarBalance] = useState<number | null>(null);
   const { toast } = useToast()
 
+  const BYPASS_GATING = true;
+
   useEffect(() => {
     const checkWalletAndBalance = async () => {
       if (arConnected && ao && address) {
         try {
-          const balance = await ao.getDefaultTokenBalance(address);
-          setWarBalance(balance);
+          if (BYPASS_GATING) {
+            setWarBalance(1000);
+          } else {
+            const balance = await ao.getDefaultTokenBalance(address);
+            setWarBalance(balance);
+          }
         } catch (error) {
           console.error('Error fetching wAR balance:', error);
           setWarBalance(null);
@@ -241,7 +247,7 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
     };
 
     checkWalletAndBalance();
-  }, [arConnected, ao, address]);
+  }, [arConnected, ao, address, BYPASS_GATING]);
 
   useEffect(() => {
     if (warBalance !== null && warBalance < 0.0001) {
@@ -273,15 +279,15 @@ function AppContent({ setActiveLink, activeLink, theme, isGlobalDragActive }: {
       return <NotConnectedUI theme={theme} />;
     }
 
-    if (passStatus === 'checking') {
+    if (passStatus === 'checking' && !BYPASS_GATING) {
       return <CheckingPassUI />;
     }
 
-    if (passStatus === 'notfound') {
+    if (passStatus === 'notfound' && !BYPASS_GATING) {
       return <PassNotFoundUI address={address} />;
     }
 
-    if (passStatus === 'error') {
+    if (passStatus === 'error' && !BYPASS_GATING) {
       return <ErrorUI />;
     }
 
