@@ -1216,7 +1216,7 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placementQueuesRef.current.add(placement);
     }
 
-    console.log('Assignment processed:', assignmentHash);
+    // console.log('Assignment processed:', assignmentHash);
     updatedFiles.forEach(async (file) => {
       console.log(`File: ${file.name}`);
       console.log(`Size: ${file.size}`);

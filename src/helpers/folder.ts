@@ -179,8 +179,8 @@ export class Folder extends Sliceable {
 
         await this.addArp(this.encryptedManifestDataItem, encManifestByteLength, fileChunkStart);
 
-        console.log(this.partsBeingBuilt);
-        console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
+        // console.log(this.partsBeingBuilt);
+        // console.log('FOLDER PARTS:', await this.dumpParts(this.partsBeingBuilt));
         // console.log('ENCRYPTED MANIFEST DATA ITEM:', this.encryptedManifestDataItem);
     }
 

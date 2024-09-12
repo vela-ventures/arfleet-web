@@ -23,6 +23,7 @@ export class RSAContainer extends EncryptedContainer {
   rsaKeyPair: CryptoKeyPair;
   private cachedRsaKey: RsaKey | null = null;
   private isInitialized: boolean = false;
+  private worker: Worker | null = null;
   private encryptor: RsaEncryptor | null = null;
 
   constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
@@ -38,6 +39,7 @@ export class RSAContainer extends EncryptedContainer {
   async initialize() {
     if (!this.isInitialized) {
       await initRsa();
+      this.worker = new Worker(new URL('../workers/rsaWorker.ts', import.meta.url), { type: 'module' });
       this.encryptor = new RsaEncryptor();
       this.isInitialized = true;
     }
@@ -88,7 +90,11 @@ export class RSAContainer extends EncryptedContainer {
         throw new Error(`Chunk size (${xoredChunk.slice(1).byteLength}) exceeds RSA_UNDERLYING_CHUNK_SIZE (${RSA_UNDERLYING_CHUNK_SIZE})`);
       }
 
-      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey, this.encryptor!); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
+      if (!this.encryptor) {
+        throw new Error('RSA encryptor not initialized');
+      }
+
+      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey, this.encryptor); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
 
       if (encryptedChunk.byteLength !== RSA_ENCRYPTED_CHUNK_SIZE) {
         throw new Error(`Encrypted chunk must be ${RSA_ENCRYPTED_CHUNK_SIZE} bytes but was ${encryptedChunk.byteLength}`);
@@ -142,23 +148,18 @@ export class RSAContainer extends EncryptedContainer {
     const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
     
     this.log("inner byte length", await this.inner!.getByteLength());
-
     this.log("chunkIdx", chunkIdx, "/", this.chunkCount);
-
     this.log("RSA: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
     this.log("RSA: inner length", await this.inner!.getByteLength());
-    // this.log("RSA: isLastChunk", isLastChunk);
+
     const chunk = await this.inner!.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
 
     this.log("RSA plaintext chunk", new TextDecoder().decode(chunk));
-
     this.log('RSA underlyingChunkStart', chunkUnderlyingStart)
     this.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
 
     const rsaKey = await this.getRsaKey();
-    const encryptedChunk = await rsaEncrypt(chunk, rsaKey, this.encryptor!);
-
-    // return chunk;
+    const encryptedChunk = await this.workerEncrypt(chunk, rsaKey);
 
     this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
 
@@ -176,6 +177,36 @@ export class RSAContainer extends EncryptedContainer {
     return encryptedChunk;
   }
 
+  private workerEncrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+      if (!this.worker) {
+        reject(new Error('Worker not initialized'));
+        return;
+      }
+
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data.action === 'encrypt') {
+          this.worker!.removeEventListener('message', messageHandler);
+          if (event.data.error) {
+            reject(new Error(event.data.error));
+          } else {
+            resolve(event.data.result);
+          }
+        }
+      };
+
+      this.worker.addEventListener('message', messageHandler);
+      this.worker.postMessage({ action: 'encrypt', data, key });
+    });
+  }
+
+  // Add a method to terminate the worker when it's no longer needed
+  public terminateWorker() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+  }
 }
 
 export async function generateRSAKeyPair() {
