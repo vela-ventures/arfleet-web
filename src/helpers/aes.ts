@@ -23,7 +23,6 @@ export class AESEncryptedContainer extends EncryptedContainer {
     salt: Uint8Array;
     secretKey: Uint8Array;
     iv: Uint8Array;
-    private worker: Worker | null = null;
   
     constructor(inner: Sliceable, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array) {
       super();
@@ -40,7 +39,6 @@ export class AESEncryptedContainer extends EncryptedContainer {
       }
 
       this.log = log;
-      this.worker = new Worker(new URL('../workers/aesWorker.ts', import.meta.url), { type: 'module' });
     }
 
     async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
@@ -84,7 +82,7 @@ export class AESEncryptedContainer extends EncryptedContainer {
         // }
         const chunkXored = expandedChunk;
         
-        const encryptedChunk = await this.workerEncrypt(chunkXored, this.secretKey, iv, isLastChunk);
+        const encryptedChunk = new Uint8Array(await encryptAes(chunkXored, this.secretKey, iv, isLastChunk));
         this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
         
         // Keep only the last N chunks in the cache
@@ -102,29 +100,6 @@ export class AESEncryptedContainer extends EncryptedContainer {
         return encryptedChunk;
     }
 
-    private workerEncrypt(data: Uint8Array, key: Uint8Array, iv: Uint8Array, isLastChunk: boolean): Promise<Uint8Array> {
-      return new Promise((resolve, reject) => {
-        if (!this.worker) {
-          reject(new Error('Worker not initialized'));
-          return;
-        }
-
-        const messageHandler = (event: MessageEvent) => {
-          if (event.data.action === 'encrypt') {
-            this.worker!.removeEventListener('message', messageHandler);
-            if (event.data.error) {
-              reject(new Error(event.data.error));
-            } else {
-              resolve(event.data.result);
-            }
-          }
-        };
-
-        this.worker.addEventListener('message', messageHandler);
-        this.worker.postMessage({ action: 'encrypt', data, key, iv, isLastChunk });
-      });
-    }
-
     async buildParts(): Promise<SliceParts> {
         const magicString = "arf::aes";
         const parts: SliceParts = [];
@@ -134,14 +109,6 @@ export class AESEncryptedContainer extends EncryptedContainer {
         parts.push([this.iv.length, this.iv]);
         parts.push([await this.getEncryptedByteLength(), this.encryptSlice.bind(this)]);
         return parts;
-    }
-
-    // Add a method to terminate the worker when it's no longer needed
-    public terminateWorker() {
-      if (this.worker) {
-        this.worker.terminate();
-        this.worker = null;
-      }
     }
 };
 
