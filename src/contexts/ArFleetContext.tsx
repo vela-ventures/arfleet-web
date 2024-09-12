@@ -891,7 +891,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         try {
           const chunkHashHex = await uploadChunk(placement, chunk, index);
           uploadedChunks++;
-          updatePlacementProgress(placement.id, (uploadedChunks / chunkCount) * 100, index, chunkHashHex);
+          const progress = Math.min((uploadedChunks / chunkCount) * 100, 99.99); // Cap at 99.99%
+          updatePlacementProgress(placement.id, progress, index, chunkHashHex);
           placement.chunks[index] = chunkHashHex;
           console.log(`Uploaded chunk ${index + 1}/${chunkCount} for placement ${placement.id}`);
         } catch (error) {
@@ -916,8 +917,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const uploadingPromise = (async () => {
       while (uploadedChunks < chunkCount) {
-        if (chunkBuffer.length >= UPLOAD_BATCH_SIZE) {
-          const batch = chunkBuffer.splice(0, UPLOAD_BATCH_SIZE);
+        if (chunkBuffer.length > 0) {
+          const batch = chunkBuffer.splice(0, Math.min(UPLOAD_BATCH_SIZE, chunkBuffer.length));
           await uploadChunkBatch(batch);
         }
         await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to prevent tight loop
@@ -927,8 +928,20 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await Promise.all([processingPromise, uploadingPromise]);
 
     // Upload any remaining chunks in the buffer
-    if (chunkBuffer.length > 0) {
-      await uploadChunkBatch(chunkBuffer);
+    while (chunkBuffer.length > 0) {
+      const batch = chunkBuffer.splice(0, Math.min(UPLOAD_BATCH_SIZE, chunkBuffer.length));
+      await uploadChunkBatch(batch);
+    }
+
+    // Ensure all chunks are uploaded
+    if (uploadedChunks < chunkCount) {
+      console.warn(`Missing chunks: ${chunkCount - uploadedChunks}. Retrying...`);
+      for (let i = 0; i < chunkCount; i++) {
+        if (!placement.chunks[i]) {
+          await processChunk(i);
+          await uploadChunkBatch([chunkBuffer.pop()!]);
+        }
+      }
     }
 
     // post-transfer
@@ -939,6 +952,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAssignmentsState(prev => prev.map(a => 
       a.id === assignment.id ? { ...a, encryptedManifestArp } : a
     ));
+
+    // Set progress to 100% after all operations are complete
+    updatePlacementProgress(placement.id, 100, chunkCount - 1, placement.chunks[chunkCount - 1]);
 
     console.log(`All chunks uploaded for placement ${placement.id}`);
     return 'spawningDeal';
