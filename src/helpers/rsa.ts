@@ -17,6 +17,8 @@ export const RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE = (PLACEMENT_BLOB_CHUNK_SIZE / 
 
 export const RSA_HEADER_SIZE = RSA_ENCRYPTED_CHUNK_SIZE;
 
+export const RSA_CHUNKS_PER_PLACEMENT_CHUNK = PLACEMENT_BLOB_CHUNK_SIZE / RSA_ENCRYPTED_CHUNK_SIZE;
+
 const log = (...args: any[]) => (false) ? console.log('[RSA]', ...args) : null;
 
 export class RSAContainer extends EncryptedContainer {
@@ -25,11 +27,14 @@ export class RSAContainer extends EncryptedContainer {
   private isInitialized: boolean = false;
   private worker: Worker | null = null;
   private encryptor: RsaEncryptor | null = null;
+  private numChunksCached: number;
+  private placementChunkCache: Map<number, Uint8Array> = new Map();
 
-  constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable) {
+  constructor(rsaKeyPair: CryptoKeyPair, inner: Sliceable, numChunksCached: number) {
     super();
     this.rsaKeyPair = rsaKeyPair;
     this.inner = inner;
+    this.numChunksCached = numChunksCached;
 
     this.underlyingChunkSize = RSA_UNDERLYING_CHUNK_SIZE;
     this.encryptedChunkSize = RSA_ENCRYPTED_CHUNK_SIZE;
@@ -38,13 +43,20 @@ export class RSAContainer extends EncryptedContainer {
 
   async initialize() {
     if (!this.isInitialized) {
+      // console.log('Initializing RSA Container');
       await initRsa();
-      this.worker = new Worker(new URL('../workers/rsaWorker.ts', import.meta.url), { type: 'module' });
-      this.encryptor = new RsaEncryptor();
+      // console.log('Creating RSA Worker');
+      this.worker = new Worker(new URL('../workers/rsaWorker.js', import.meta.url), { type: 'module' });
+      // console.log('RSA Worker created:', this.worker);
+      this.worker.onerror = (error) => {
+        console.error('RSA Worker error:', error);
+      };
+      // this.encryptor = new RsaEncryptor();
       this.isInitialized = true;
+      // console.log('RSA Container initialized');
     }
   }
-
+  
   async getRsaKey(): Promise<RsaKey> {
     await this.initialize();
     if (!this.cachedRsaKey) {
@@ -59,6 +71,11 @@ export class RSAContainer extends EncryptedContainer {
   }
 
   async encryptPlacementChunk(c: number, start: number, end: number): Promise<Uint8Array> {
+    // Check if the entire placement chunk is cached
+    if (this.placementChunkCache.has(c)) {
+      return this.placementChunkCache.get(c)!.slice(start, end);
+    }
+
     const decryptedOffsetStart = RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE * c;
     const decryptedOffsetEnd = decryptedOffsetStart + RSA_PLACEMENT_UNDERLYING_CHUNK_SIZE;
     
@@ -90,11 +107,12 @@ export class RSAContainer extends EncryptedContainer {
         throw new Error(`Chunk size (${xoredChunk.slice(1).byteLength}) exceeds RSA_UNDERLYING_CHUNK_SIZE (${RSA_UNDERLYING_CHUNK_SIZE})`);
       }
 
-      if (!this.encryptor) {
-        throw new Error('RSA encryptor not initialized');
-      }
+      // if (!this.encryptor) {
+      //   throw new Error('RSA encryptor not initialized');
+      // }
 
-      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey, this.encryptor); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
+      // const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey, this.encryptor); // sending without the 0x00 byte at the start, rsaEncrypt needs keysize-padding
+      const encryptedChunk = await rsaEncrypt(xoredChunk.slice(1), rsaKey, this.workerEncrypt.bind(this));
 
       if (encryptedChunk.byteLength !== RSA_ENCRYPTED_CHUNK_SIZE) {
         throw new Error(`Encrypted chunk must be ${RSA_ENCRYPTED_CHUNK_SIZE} bytes but was ${encryptedChunk.byteLength}`);
@@ -109,6 +127,15 @@ export class RSAContainer extends EncryptedContainer {
 
     if (together.byteLength !== PLACEMENT_BLOB_CHUNK_SIZE) {
       throw new Error(`Together must be ${PLACEMENT_BLOB_CHUNK_SIZE} bytes but was ${together.byteLength}`);
+    }
+
+    // Cache the entire encrypted placement chunk
+    this.placementChunkCache.set(c, together);
+
+    // Manage cache size more aggressively
+    while (this.placementChunkCache.size > this.numChunksCached) {
+      const oldestKey = this.placementChunkCache.keys().next().value;
+      this.placementChunkCache.delete(oldestKey);
     }
 
     return together.slice(start, end);
@@ -137,49 +164,51 @@ export class RSAContainer extends EncryptedContainer {
     return parts;
   }
 
-  async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
-    this.log('encryptChunk', chunkIdx, this.rsaKeyPair)
+  // async encryptChunk(chunkIdx: number): Promise<Uint8Array> {
+  //   this.log('encryptChunk', chunkIdx, this.rsaKeyPair)
 
-    await this.initialize();
-    if (this.chunkCache.has(chunkIdx)) {
-      return this.chunkCache.get(chunkIdx)!.encryptedChunk;
-    }
+  //   await this.initialize();
+  //   if (this.chunkCache.has(chunkIdx)) {
+  //     return this.chunkCache.get(chunkIdx)!.encryptedChunk;
+  //   }
 
-    const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
+  //   const [chunkUnderlyingStart, chunkUnderlyingEnd, isLastChunk] = await this.getChunkUnderlyingBoundaries(chunkIdx);
     
-    this.log("inner byte length", await this.inner!.getByteLength());
-    this.log("chunkIdx", chunkIdx, "/", this.chunkCount);
-    this.log("RSA: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
-    this.log("RSA: inner length", await this.inner!.getByteLength());
+  //   this.log("inner byte length", await this.inner!.getByteLength());
+  //   this.log("chunkIdx", chunkIdx, "/", this.chunkCount);
+  //   this.log("RSA: getting inner slice", chunkUnderlyingStart, chunkUnderlyingEnd);
+  //   this.log("RSA: inner length", await this.inner!.getByteLength());
 
-    const chunk = await this.inner!.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
+  //   const chunk = await this.inner!.slice(chunkUnderlyingStart, chunkUnderlyingEnd);
 
-    this.log("RSA plaintext chunk", new TextDecoder().decode(chunk));
-    this.log('RSA underlyingChunkStart', chunkUnderlyingStart)
-    this.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
+  //   // this.log("RSA plaintext chunk", new TextDecoder().decode(chunk));
+  //   this.log('RSA underlyingChunkStart', chunkUnderlyingStart)
+  //   this.log('RSA underlyingChunkEnd', chunkUnderlyingEnd)
 
-    const rsaKey = await this.getRsaKey();
-    const encryptedChunk = await this.workerEncrypt(chunk, rsaKey);
+  //   const rsaKey = await this.getRsaKey();
+  //   const encryptedChunk = await this.workerEncrypt(chunk, rsaKey);
 
-    this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
+  //   this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
 
-    // Keep only the last N chunks in the cache
-    const maxCacheSize = 5;
-    const keysToKeep = Array.from({ length: maxCacheSize }, (_, i) => chunkIdx - i).filter(k => k >= 0);
-    for (const key of this.chunkCache.keys()) {
-      if (!keysToKeep.includes(key)) {
-        this.chunkCache.delete(key);
-      }
-    }
+  //   // Keep only the last N chunks in the cache
+  //   const maxCacheSize = this.numChunksCached;
+  //   const keysToKeep = Array.from({ length: maxCacheSize }, (_, i) => chunkIdx - i).filter(k => k >= 0);
+  //   for (const key of this.chunkCache.keys()) {
+  //     if (!keysToKeep.includes(key)) {
+  //       this.chunkCache.delete(key);
+  //     }
+  //   }
 
-    this.log('encrypted chunk', encryptedChunk)
+  //   this.log('encrypted chunk', encryptedChunk)
 
-    return encryptedChunk;
-  }
+  //   return encryptedChunk;
+  // }
 
   private workerEncrypt(data: Uint8Array, key: RsaKey): Promise<Uint8Array> {
+    // console.log('workerEncrypt', data, key);
     return new Promise((resolve, reject) => {
       if (!this.worker) {
+        console.error('Worker not initialized');
         reject(new Error('Worker not initialized'));
         return;
       }
@@ -195,7 +224,9 @@ export class RSAContainer extends EncryptedContainer {
         }
       };
 
+      // console.log('adding message handler', this.worker);
       this.worker.addEventListener('message', messageHandler);
+      // console.log('posting message');
       this.worker.postMessage({ action: 'encrypt', data, key });
     });
   }
@@ -304,7 +335,7 @@ export async function generateRsaKey(bits: number, exponent: number = 65537): Pr
   return keyPairToRsaKey(keyPair);
 }
 
-export async function rsaEncrypt(data: Uint8Array, key: RsaKey, encryptor: RsaEncryptor): Promise<Uint8Array> {
+export async function rsaEncrypt(data: Uint8Array, key: RsaKey, workerEncrypt: (data: Uint8Array, key: RsaKey) => Promise<Uint8Array>): Promise<Uint8Array> {
   const maxSize = key.bits / 8 - RSA_PADDING;
   if (data.length > maxSize) {
     throw new Error(`Data is too long: ${data.length} bytes, maximum is ${maxSize} bytes`);
@@ -316,7 +347,7 @@ export async function rsaEncrypt(data: Uint8Array, key: RsaKey, encryptor: RsaEn
   const paddedData = padLeft(data, key.bits / 8);
 
   log(`RSA Encrypting data (${paddedData.length} bytes): ${bufferToHex(paddedData)}`);
-  const encrypted = new Uint8Array(encryptor.private_encrypt(paddedData, key.n, key.d));
+  const encrypted = new Uint8Array(await workerEncrypt(paddedData, key));
   log(`RSA Encrypted result (${encrypted.length} bytes): ${bufferToHex(encrypted)}`);
   return encrypted;
 }

@@ -2,6 +2,7 @@ import { bufferToAscii, byteArrayToLong, concatBuffers, longTo8ByteArray } from 
 import { encKeyFromMasterKeyAndSalt } from "./encrypt";
 import { EncryptedContainer } from "./encryptedContainer";
 import { downloadUint8ArrayAsFile } from "./extra";
+import { PLACEMENT_BLOB_CHUNK_SIZE } from "./placementBlob";
 import { Sliceable, SliceableReader, SliceParts } from "./sliceable";
 
 export const AES_IV_BYTE_LENGTH = 16;
@@ -23,8 +24,9 @@ export class AESEncryptedContainer extends EncryptedContainer {
     salt: Uint8Array;
     secretKey: Uint8Array;
     iv: Uint8Array;
+    numChunksCached: number;
   
-    constructor(inner: Sliceable, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array) {
+    constructor(inner: Sliceable, salt: Uint8Array, secretKey: Uint8Array, iv: Uint8Array, numChunksCached: number) {
       super();
 
       this.encryptedChunkSize = AES_CHUNK_SIZE;
@@ -37,6 +39,8 @@ export class AESEncryptedContainer extends EncryptedContainer {
       if (iv.length !== AES_IV_BYTE_LENGTH) {
         throw new Error(`Invalid IV length: ${iv.length}, expected ${AES_IV_BYTE_LENGTH}`);
       }
+
+      this.numChunksCached = numChunksCached * (PLACEMENT_BLOB_CHUNK_SIZE / AES_UNDERLYING_CHUNK_SIZE);
 
       this.log = log;
     }
@@ -86,7 +90,7 @@ export class AESEncryptedContainer extends EncryptedContainer {
         this.chunkCache.set(chunkIdx, { plainChunk: chunk, encryptedChunk: encryptedChunk });
         
         // Keep only the last N chunks in the cache
-        const maxCacheSize = 5;
+        const maxCacheSize = this.numChunksCached;
         const keysToKeep = Array.from({ length: maxCacheSize }, (_, i) => chunkIdx - i).filter(k => k >= 0);
         for (const key of this.chunkCache.keys()) {
             if (!keysToKeep.includes(key)) {

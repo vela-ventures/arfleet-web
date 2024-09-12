@@ -34,7 +34,13 @@ import { createAndSpawnDeal, fundDeal } from '../arfleet/deal';
 import utils from '../arfleet/utils';
 import { SingleThreadedQueue } from '@/helpers/singleThreadedQueue';
 import FundingModal from '../components/FundingModal';
+
 const CHUNK_SIZE = 8192;
+
+const MAX_CHUNK_DIFFERENCE = 50;
+const SLOW_PROVIDER = '---disabled-https://p2.arfleet.io'; // Replace with the provider you want to slow down
+const SLOW_PROVIDER_DELAY = 2000; // 2 seconds delay
+const CHECK_INTERVAL = 100; // Check every 100ms
 
 type DataItemSigner = ReturnType<typeof createDataItemSigner>;
 
@@ -206,6 +212,7 @@ export class StorageAssignment {
   fundingDealQueue: SingleThreadedQueue;
   walletAddress: string | null;
   createdAt: number;
+
   constructor(data: Partial<StorageAssignment>) {
     // initial values
     this.id = '';
@@ -836,9 +843,9 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // placement
       // placement
 
-      const placementBlob = placement.placementBlob;
-      const placementBlobLength = await placementBlob!.getByteLength();
-      const chunkCount = await placementBlob!.getChunkCount();
+      const placementBlob = placement.placementBlob!;
+      const placementBlobLength = await placementBlob.getByteLength();
+      const chunkCount = await placementBlob.getChunkCount();
   
       const result_p = await placement.cmd('placement', { placement_id: placement.id, size: placementBlobLength, chunks: chunkCount, provider_id: providerId }, false);
 
@@ -870,8 +877,32 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       placement.chunks = {};
     }
 
+    const waitForSlowPlacements = () => {
+      return new Promise<void>((resolve) => {
+        const checkAndWait = () => {
+          const slowestPlacement = assignment.placements.reduce((slowest, current) => {
+            const slowestChunks = slowest.chunks ? Object.keys(slowest.chunks).length : 0;
+            const currentChunks = current.chunks ? Object.keys(current.chunks).length : 0;
+            return currentChunks < slowestChunks ? current : slowest;
+          });
+
+          const slowestChunkCount = slowestPlacement.chunks ? Object.keys(slowestPlacement.chunks).length : 0;
+          if (uploadedChunks - slowestChunkCount < MAX_CHUNK_DIFFERENCE) {
+            resolve();
+          } else {
+            setTimeout(checkAndWait, CHECK_INTERVAL);
+          }
+        };
+
+        checkAndWait();
+      });
+    };
+
     console.log(`Uploading chunks for placement ${placement.id}`);
     for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+      // Wait if this placement is too far ahead
+      await waitForSlowPlacements();
+
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, placementBlobLength);
       const chunk = await placementBlob.slice(start, end);
@@ -885,24 +916,14 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         placement.chunks[chunkIndex] = chunkHashHex;
         
         console.log(`Uploaded chunk ${chunkIndex + 1}/${chunkCount} for placement ${placement.id}`);
+
+        // Small delay to allow other placements to progress
+        await new Promise(resolve => setTimeout(resolve, 10));
       } catch (error) {
         console.error(`Error uploading chunk ${chunkIndex} for placement ${placement.id}:`, error);
         return 'error';
       }
     }
-
-    // Update the placement in the assignments state
-    setAssignmentsState(prev => prev.map(a => {
-      if (a.id === assignment.id) {
-        return {
-          ...a,
-          placements: a.placements.map(p => 
-            p.id === placement.id ? { ...p, chunks: placement.chunks } : p
-          )
-        };
-      }
-      return a;
-    }));
 
     // post-transfer
     const encryptedManifestArp = await assignment.folder!.encryptedManifestDataItem!.arp.chunkHashes[0];
@@ -926,15 +947,11 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const uploadChunk = async (placement: Placement, chunk: Uint8Array, chunkIndex: number) => {
     const chunkHashHex = await sha256hex(chunk);
 
-    // const rsaKey = await placement.rsaContainer!.getRsaKey();
-    // const publicKeyPem = rsaPublicKeyToPem(rsaKey.n, rsaKey.e);
-
     const rsaKP = placement.rsaContainer!.rsaKeyPair;
     const publicKey = rsaKP.publicKey;
     const publicKeyPem = await crypto.subtle.exportKey('spki', publicKey);
     const publicKeyPemBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyPem)));
     const publicKeyPemString = `-----BEGIN PUBLIC KEY-----\n${publicKeyPemBase64}\n-----END PUBLIC KEY-----`;
-    // console.log('publicKeyPemString', publicKeyPemString);
 
     const headers = new Headers({
       'Content-Type': 'application/octet-stream',
@@ -942,10 +959,15 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
       'X-Chunk-Index': chunkIndex.toString(),
       'X-Chunk-Hash': chunkHashHex,
       'X-RSA-Public-Key': stringToB64Url(publicKeyPemString),
-
       'Arfleet-Address': address,
       'Arfleet-Signature': 'signature' // todo: p4
     });
+
+    // Introduce delay for the slow provider
+    if (placement.provider === SLOW_PROVIDER) {
+      console.log(`Introducing delay for slow provider ${SLOW_PROVIDER}`);
+      await new Promise(resolve => setTimeout(resolve, SLOW_PROVIDER_DELAY));
+    }
 
     const response = await fetch(`${placement.provider}/cmd/upload`, {
       method: 'POST',
@@ -998,9 +1020,6 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // And update the current copy just in case (needed for fundDealRef next)
       placement.processId = processId;
-
-      // // Update only the placement in AODB
-      // aodb?.set(`placement:${placement.id}`, { ...placement, processId, status: 'fundingDeal' });
 
       console.log(`Deal spawned for placement ${placement.id}: ${processId}`);
       return 'fundingDeal';
@@ -1154,7 +1173,8 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
         dataItem,
         salt,
         secretKey,
-        iv
+        iv,
+        MAX_CHUNK_DIFFERENCE * 2
       );
 
       const encryptedDataItem = await assignment.dataItemFactory!.createDataItemWithSliceable(aesContainer, /*tags*/ [{name: "ArFleet-DataItem-Type", value: "AESContainer"}], assignment.walletSigner);
@@ -1170,12 +1190,12 @@ export const ArFleetProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (!masterKey) throw new Error('Master key not found');
     console.log('creating folder');
-    const folder = await createFolder(updatedFiles, assignment.dataItemFactory!, walletSigner, masterKey);
+    const folder = await createFolder(updatedFiles, assignment.dataItemFactory!, walletSigner, masterKey, MAX_CHUNK_DIFFERENCE * 2);
 
     const placements = await Promise.all(settings.providers.map(async provider => {
       const rsaKeyPair = await generateRSAKeyPair();
 
-      const rsaContainer = new RSAContainer(rsaKeyPair, folder);
+      const rsaContainer = new RSAContainer(rsaKeyPair, folder, MAX_CHUNK_DIFFERENCE * 2);
       await rsaContainer.initialize();
       console.log('container', rsaContainer);
 

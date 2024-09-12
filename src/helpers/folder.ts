@@ -23,13 +23,15 @@ export class Folder extends Sliceable {
     chunkIdxToFile: Map<number, [ FileMetadata | Arp | DataItem, number ]> = new Map();
     chunksConsumed = 0;
     partsBeingBuilt: SliceParts = [];
+    numChunksCached: number;
 
-    constructor(files: FileMetadata[], dataItemFactory: DataItemFactory, signer: any, masterKey: Uint8Array) {
+    constructor(files: FileMetadata[], dataItemFactory: DataItemFactory, signer: any, masterKey: Uint8Array, numChunksCached: number) {
         super();
         this.files = files;
         this.dataItemFactory = dataItemFactory;
         this.signer = signer;
         this.masterKey = masterKey;
+        this.numChunksCached = numChunksCached;
     }
 
     async remainingZeroes(byteLength: number, boundary: number) {
@@ -161,7 +163,7 @@ export class Folder extends Sliceable {
         const salt = createSalt();
         const iv = createSalt(AES_IV_BYTE_LENGTH);
         const secretKey = await encKeyFromMasterKeyAndSalt(this.masterKey, salt);
-        const encContainer = new AESEncryptedContainer(manifestDataItem, salt, secretKey, iv);
+        const encContainer = new AESEncryptedContainer(manifestDataItem, salt, secretKey, iv, this.numChunksCached);
 
         this.encryptedManifestDataItem = await this.dataItemFactory.createDataItemWithSliceable(encContainer, [
             {name: "ArFleet-DataItem-Type", value: "EncryptedAESPathManifest" }
@@ -196,6 +198,6 @@ export class Folder extends Sliceable {
     }
 }
 
-export async function createFolder(files: FileMetadata[], dataItemFactory: DataItemFactory, signer: any, masterKey: Uint8Array) {
-    return new Folder(files, dataItemFactory, signer, masterKey);
+export async function createFolder(files: FileMetadata[], dataItemFactory: DataItemFactory, signer: any, masterKey: Uint8Array, numChunksCached: number) {
+    return new Folder(files, dataItemFactory, signer, masterKey, numChunksCached);
 }
