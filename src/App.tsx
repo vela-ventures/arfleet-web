@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { HashRouter as Router, Route, Routes, useLocation } from 'react-router-dom'
 import { Bell, CloudUpload, Home, Package, ShoppingCart, Users, Server, CogIcon, Globe, FileText, Folder, FolderArchive, Wallet } from "lucide-react"
 import { Link as RouterLink } from 'react-router-dom'
-import { ConnectButton } from "arweave-wallet-kit"
+import { ConnectButton } from "@arweave-wallet-kit/react"
 import WalletWrapper from './components/WalletWrapper'
 import MyArFleet from './components/MyArFleet'
 import Providers from './components/Providers'
